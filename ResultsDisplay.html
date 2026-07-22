@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Burgerville — Results &amp; Leaderboard</title>
+<style>
+  :root {
+    --bg: #FAF6EE; --panel: #ffffff; --ink: #1a1a2e; --muted: #5a5a72;
+    --new-eq: #1d7a3a; --old-eq: #6b6b7d; --border: #e0dbd0;
+    --shadow: 0 4px 24px rgba(26,26,46,0.10); --radius: 12px;
+    --paper-line: #E4DCC8; --rust: #A6491F; --rust-dark: #7E3517; --sage: #5B7553; --gold: #B98A2E;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg);
+    background-image: linear-gradient(var(--paper-line) 1px, transparent 1px), linear-gradient(90deg, var(--paper-line) 1px, transparent 1px);
+    background-size: 28px 28px; color: var(--ink);
+    font-family: Georgia, "Iowan Old Style", serif;
+    padding: 26px 16px 60px;
+  }
+  .masthead { max-width: 1040px; margin: 0 auto 18px; text-align: center; }
+  .masthead .kicker { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; color: var(--rust); }
+  .masthead h1 { margin: 4px 0 2px; font-size: 26px; }
+  .masthead .season-name { font-size: 14px; font-style: italic; color: var(--muted); }
+
+  .part-row { max-width: 1040px; margin: 0 auto 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .part-pill {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 700;
+    padding: 10px 18px; border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+    background: #F3F7F1; border: 1.5px solid var(--sage); color: var(--sage);
+  }
+  .part-pill .part-range { font-weight: 400; font-size: 11px; opacity: 0.85; }
+  .part-pill:hover { background: var(--sage); color: white; }
+  .part-pill.selected { background: var(--sage); color: white; outline: 3px solid #3d5438; outline-offset: 1px; }
+
+  .season-row { max-width: 1040px; margin: 0 auto 20px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .season-btn {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 600;
+    padding: 9px 15px; border-radius: 20px; border: 1px solid var(--ink); background: var(--panel); color: var(--ink); cursor: pointer;
+  }
+  .season-btn:hover { background: var(--ink); color: var(--bg); }
+  .season-btn.active { background: var(--rust); border-color: var(--rust-dark); color: white; }
+
+  .grid { max-width: 1040px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); padding: 18px 20px; margin-bottom: 20px; }
+  .card h2 { font-size: 1.05rem; margin: 0 0 4px; }
+  .card .subtitle { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11.5px; color: var(--muted); margin-bottom: 12px; }
+
+  .component-row { display: flex; justify-content: space-between; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13.5px; padding: 5px 0; border-bottom: 1px dashed var(--paper-line); }
+  .component-row .label { color: var(--ink); }
+  .component-row .pts { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .total-row { display: flex; justify-content: space-between; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 16px; font-weight: 700; padding: 12px 0 2px; margin-top: 6px; border-top: 2px solid var(--ink); }
+  .total-row .pts { color: var(--rust); }
+
+  table.leaderboard { width: 100%; border-collapse: collapse; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13.5px; }
+  table.leaderboard th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--border); }
+  table.leaderboard td { padding: 7px 6px; border-bottom: 1px dashed var(--paper-line); }
+  table.leaderboard tr.my-team { background: #FBF3E3; font-weight: 700; }
+  table.leaderboard td.rank { color: var(--muted); width: 26px; }
+  table.leaderboard td.score { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  .empty-note { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; color: var(--muted); font-style: italic; }
+  .cumulative-banner { max-width: 1040px; margin: 0 auto 6px; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<div id="loginScreen" style="max-width:420px;margin:80px auto;text-align:center;font-family:Georgia,serif;">
+  <h1 style="font-size:22px;">Burgerville</h1>
+  <p style="font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#5a5a72;font-size:14px;">
+    Enter your email to get a sign-in link. No password needed.
+  </p>
+  <input id="loginEmail" type="email" placeholder="you@example.edu"
+    style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid #c9c2ae;font-family:-apple-system,sans-serif;font-size:14px;margin-bottom:10px;">
+  <button id="loginBtn" style="width:100%;padding:10px;border-radius:6px;border:none;background:#A6491F;color:white;font-family:-apple-system,sans-serif;font-size:14px;font-weight:600;cursor:pointer;">
+    Send sign-in link
+  </button>
+  <p id="loginStatus" style="font-family:-apple-system,sans-serif;font-size:13px;color:#5a5a72;margin-top:12px;"></p>
+</div>
+
+<div id="appRoot" style="display:none;">
+
+<div class="masthead">
+  <div class="kicker">This Season's Results</div>
+  <h1 id="heading">Results</h1>
+  <div class="season-name" id="seasonName"></div>
+</div>
+
+<div class="part-row" id="partRow"></div>
+<div class="season-row" id="seasonRow"></div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Your Results</h2>
+    <div class="subtitle">Visible only to you.</div>
+    <div id="myResultBody"></div>
+  </div>
+
+  <div class="card">
+    <h2>Team Leaderboard — This Season</h2>
+    <div class="subtitle">Team average points, this season only.</div>
+    <div id="seasonLeaderboardBody"></div>
+  </div>
+</div>
+
+<div class="cumulative-banner">Season-to-date standings (through season <span id="lastGradedLabel">—</span>)</div>
+<div class="grid">
+  <div class="card">
+    <h2>Your Cumulative Score</h2>
+    <div class="subtitle">Visible only to you.</div>
+    <div id="myCumulativeBody"></div>
+  </div>
+
+  <div class="card">
+    <h2>Team Leaderboard — Season to Date</h2>
+    <div class="subtitle">Sum of each week's team average.</div>
+    <div id="cumulativeLeaderboardBody"></div>
+  </div>
+</div>
+
+<script>
+// ==== Supabase setup ====
+const SUPABASE_URL = 'https://oxhojojzwvnfzsfpybyf.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94aG9qb2p6d3ZuZnpzZnB5YnlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2OTQzNTksImV4cCI6MjEwMDI3MDM1OX0.USn_IYs5LUBi8xk0kzR85l-miSiMH8U0soms7QzZpmk';
+const INSTANCE_ID = 'eco112-fall26';
+
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let currentParticipant = { participantId: null, teamBrand: '' };
+
+async function loadCurrentParticipant() {
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  const { data } = await supabaseClient.from('participants').select('*')
+    .eq('id', user.id).eq('instance_id', INSTANCE_ID).maybeSingle();
+  currentParticipant = data
+    ? { participantId: data.id, teamBrand: data.team_brand }
+    : { participantId: user.id, teamBrand: '' };
+}
+
+const TABLE_BY_PART = {
+  I: 'results_part_i', II: 'results_part_ii',
+  IIIProfit: 'results_part_iii_profit', IIIRegulation: 'results_part_iii_regulation'
+};
+const VIEW_BY_PART = {
+  I: 'team_leaderboard_part_i', II: 'team_leaderboard_part_ii',
+  IIIProfit: 'team_leaderboard_part_iii_profit', IIIRegulation: 'team_leaderboard_part_iii_regulation'
+};
+const COMPONENT_LABELS = {
+  I: [['pts_demand', 'Demand direction'], ['pts_supply', 'Supply direction'],
+      ['pts_shortage_or_surplus', 'Shortage / surplus'], ['pts_price_direction', 'Price direction'],
+      ['pts_qd_direction', 'Quantity demanded direction'], ['pts_qs_direction', 'Quantity supplied direction'],
+      ['pts_price_estimate', 'Price estimate (ballpark)'], ['pts_quantity_estimate', 'Quantity estimate (ballpark)'],
+      ['rank_points', 'Accuracy rank bonus']],
+  II: [['pts_demand', 'Demand direction'], ['pts_supply', 'Supply direction'], ['pts_price', 'Price direction'],
+       ['pts_qd', 'Quantity demanded direction'], ['pts_qs', 'Quantity supplied direction'],
+       ['pts_price_estimate', 'Price estimate (ballpark)'], ['pts_quantity_estimate', 'Quantity estimate (ballpark)'],
+       ['pts_production_accuracy', 'Production accuracy'], ['pts_cost_accuracy', 'Cost accuracy'],
+       ['pts_firm_theory', 'Firm theory (set price = marginal cost)'], ['pts_profit', 'Profit performance'],
+       ['rank_points', 'Profit rank bonus']],
+  IIIProfit: [['pts_quantity_level', 'Quantity level (MR = MC)'], ['pts_price_level', 'Price level'],
+      ['pts_mc', 'Marginal cost accuracy'], ['pts_mr', 'Marginal revenue accuracy'],
+      ['pts_competitive_price', 'Competitive price estimate'], ['pts_competitive_quantity', 'Competitive quantity estimate'],
+      ['pts_cs_monopoly', 'Consumer surplus (monopoly)'], ['pts_cs_competitive', 'Consumer surplus (competitive)'],
+      ['pts_profit', 'Profit performance'], ['rank_points', 'Profit rank bonus']],
+  IIIRegulation: [['pts_quantity_level', 'Quantity level'], ['pts_price_level', 'Price level'],
+      ['pts_cs_accuracy', 'Consumer surplus accuracy'], ['pts_welfare', 'Welfare performance'],
+      ['rank_points', 'Welfare rank bonus']]
+};
+
+function getPartFamily(partCode) { return partCode.indexOf('III') === 0 ? 'III' : partCode; }
+const PART_LABELS = { I: 'Part I: Market Dynamics', II: 'Part II: Perfect Competition', III: 'Part III: Monopoly' };
+
+/** Direct query, no Edge Function needed: season_parameters' RLS policy already only
+ * reveals rows for GRADED seasons (season_number < current_season), which is exactly the
+ * set this screen wants to show. */
+async function getResultsOverview() {
+  const { data: gameState } = await supabaseClient.from('game_state').select('current_season').eq('instance_id', INSTANCE_ID).single();
+  const lastGradedSeason = gameState.current_season - 1;
+  const { data: rows } = await supabaseClient.from('season_parameters').select('season_number, part')
+    .eq('instance_id', INSTANCE_ID).order('season_number');
+  const parts = [];
+  (rows || []).forEach((row) => {
+    const family = getPartFamily(row.part);
+    const last = parts[parts.length - 1];
+    if (last && last.partFamily === family) last.seasons.push(row.season_number);
+    else parts.push({ partFamily: family, label: PART_LABELS[family] || family, seasons: [row.season_number] });
+  });
+  return { parts, lastGradedSeason: lastGradedSeason > 0 ? lastGradedSeason : null };
+}
+
+/** Direct queries: my own row (RLS limits results_part_* to participant_id = auth.uid()
+ * automatically) plus the team leaderboard VIEW (safe aggregate, validated in test_rls.js
+ * to expose every team's average without leaking any individual's row). */
+async function getSeasonResults(k) {
+  const { data: seasonRow } = await supabaseClient.from('season_parameters').select('*')
+    .eq('instance_id', INSTANCE_ID).eq('season_number', k).single();
+  const part = seasonRow.part;
+
+  const { data: myRow } = await supabaseClient.from(TABLE_BY_PART[part]).select('*')
+    .eq('instance_id', INSTANCE_ID).eq('season_number', k).maybeSingle();
+  const { data: lbRows } = await supabaseClient.from(VIEW_BY_PART[part]).select('*')
+    .eq('instance_id', INSTANCE_ID).eq('season_number', k).order('average_points', { ascending: false });
+
+  const teamLeaderboard = (lbRows || []).map((row, i) => ({
+    teamBrand: row.team_brand, averagePoints: Number(row.average_points),
+    submissionCount: row.submission_count, isMyTeam: row.team_brand === currentParticipant.teamBrand, rank: i + 1
+  }));
+
+  let myResult = null;
+  if (myRow) {
+    const components = COMPONENT_LABELS[part].map(([key, label]) => ({ label, points: Number(myRow[key] || 0) }));
+    myResult = { components, totalPoints: Number(myRow.total_points || 0) };
+  }
+
+  return { seasonNumber: k, seasonName: seasonRow.season_name || '', part, myResult, teamLeaderboard };
+}
+
+/** Iterates every graded season, accumulating each team's per-season average (matching the
+ * original "totaled" design) and this participant's own running total. All direct queries,
+ * relying on the same RLS + view design as getSeasonResults above. */
+async function getCumulativeStandings() {
+  const { data: gameState } = await supabaseClient.from('game_state').select('current_season').eq('instance_id', INSTANCE_ID).single();
+  const lastGradedSeason = gameState.current_season - 1;
+  const { data: seasonRows } = await supabaseClient.from('season_parameters').select('season_number, part')
+    .eq('instance_id', INSTANCE_ID).order('season_number');
+
+  const teamCumulative = {};
+  let myCumulativeTotal = 0, mySeasonsPlayed = 0;
+
+  for (const sRow of (seasonRows || [])) {
+    if (sRow.season_number > lastGradedSeason) continue;
+    const part = sRow.part;
+    const { data: lbRows } = await supabaseClient.from(VIEW_BY_PART[part]).select('*')
+      .eq('instance_id', INSTANCE_ID).eq('season_number', sRow.season_number);
+    (lbRows || []).forEach((row) => {
+      teamCumulative[row.team_brand] = (teamCumulative[row.team_brand] || 0) + Number(row.average_points);
+    });
+
+    const { data: myRow } = await supabaseClient.from(TABLE_BY_PART[part]).select('total_points')
+      .eq('instance_id', INSTANCE_ID).eq('season_number', sRow.season_number).maybeSingle();
+    if (myRow) { myCumulativeTotal += Number(myRow.total_points || 0); mySeasonsPlayed++; }
+  }
+
+  const teamLeaderboardCumulative = Object.keys(teamCumulative).map((team) => ({
+    teamBrand: team, cumulativePoints: teamCumulative[team], isMyTeam: team === currentParticipant.teamBrand
+  }));
+  teamLeaderboardCumulative.sort((a, b) => b.cumulativePoints - a.cumulativePoints);
+  teamLeaderboardCumulative.forEach((t, i) => { t.rank = i + 1; });
+
+  return { lastGradedSeason: lastGradedSeason > 0 ? lastGradedSeason : null, teamLeaderboardCumulative, myCumulativeTotal, mySeasonsPlayed };
+}
+
+let resultsOverview = null;
+let viewingSeason = null;
+
+function fmtPts(x) { return Number(x).toFixed(2); }
+
+function renderMyResult(myResult) {
+  const el = document.getElementById('myResultBody');
+  if (!myResult) {
+    el.innerHTML = '<p class="empty-note">You did not submit a prediction this season.</p>';
+    return;
+  }
+  let html = '';
+  myResult.components.forEach(c => {
+    html += `<div class="component-row"><span class="label">${c.label}</span><span class="pts">${fmtPts(c.points)}</span></div>`;
+  });
+  html += `<div class="total-row"><span>Total</span><span class="pts">${fmtPts(myResult.totalPoints)}</span></div>`;
+  el.innerHTML = html;
+}
+
+function renderSeasonLeaderboard(teamLeaderboard) {
+  const el = document.getElementById('seasonLeaderboardBody');
+  if (!teamLeaderboard || teamLeaderboard.length === 0) {
+    el.innerHTML = '<p class="empty-note">No submissions recorded for this season.</p>';
+    return;
+  }
+  let html = '<table class="leaderboard"><thead><tr><th></th><th>Team</th><th style="text-align:right">Avg. Points</th></tr></thead><tbody>';
+  teamLeaderboard.forEach(t => {
+    html += `<tr class="${t.isMyTeam ? 'my-team' : ''}"><td class="rank">#${t.rank}</td><td>${t.teamBrand}</td><td class="score">${fmtPts(t.averagePoints)}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function renderCumulativeLeaderboard(teamLeaderboardCumulative) {
+  const el = document.getElementById('cumulativeLeaderboardBody');
+  if (!teamLeaderboardCumulative || teamLeaderboardCumulative.length === 0) {
+    el.innerHTML = '<p class="empty-note">No results yet.</p>';
+    return;
+  }
+  let html = '<table class="leaderboard"><thead><tr><th></th><th>Team</th><th style="text-align:right">Total Points</th></tr></thead><tbody>';
+  teamLeaderboardCumulative.forEach(t => {
+    html += `<tr class="${t.isMyTeam ? 'my-team' : ''}"><td class="rank">#${t.rank}</td><td>${t.teamBrand}</td><td class="score">${fmtPts(t.cumulativePoints)}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function renderMyCumulative(data) {
+  const el = document.getElementById('myCumulativeBody');
+  el.innerHTML = `
+    <div class="component-row"><span class="label">Seasons played</span><span class="pts">${data.mySeasonsPlayed}</span></div>
+    <div class="total-row"><span>Cumulative total</span><span class="pts">${fmtPts(data.myCumulativeTotal)}</span></div>`;
+}
+
+function renderPartRow() {
+  const row = document.getElementById('partRow');
+  row.innerHTML = '';
+  resultsOverview.parts.forEach(part => {
+    const pill = document.createElement('div');
+    const isSelected = viewingSeason !== null && part.seasons.indexOf(viewingSeason) !== -1;
+    pill.className = 'part-pill' + (isSelected ? ' selected' : '');
+    pill.innerHTML = `${part.label}<span class="part-range">Seasons ${part.seasons[0]}\u2013${part.seasons[part.seasons.length-1]}</span>`;
+    pill.onclick = () => { loadSeason(part.seasons[part.seasons.length - 1]); };
+    row.appendChild(pill);
+  });
+}
+
+function renderSeasonRowFor(seasons) {
+  const row = document.getElementById('seasonRow');
+  row.innerHTML = '';
+  seasons.forEach(k => {
+    const btn = document.createElement('button');
+    btn.className = 'season-btn' + (k === viewingSeason ? ' active' : '');
+    btn.textContent = 'Season ' + k;
+    btn.onclick = () => loadSeason(k);
+    row.appendChild(btn);
+  });
+}
+
+function applySeasonResults(data) {
+  viewingSeason = data.seasonNumber;
+  document.getElementById('heading').textContent = 'Season ' + data.seasonNumber + ' Results';
+  document.getElementById('seasonName').textContent = data.seasonName ? '— ' + data.seasonName : '';
+  renderMyResult(data.myResult);
+  renderSeasonLeaderboard(data.teamLeaderboard);
+  renderPartRow();
+
+  const part = resultsOverview.parts.filter(p => p.seasons.indexOf(viewingSeason) !== -1)[0];
+  if (part) renderSeasonRowFor(part.seasons);
+}
+
+function loadSeason(k) {
+  getSeasonResults(k)
+    .then(applySeasonResults)
+    .catch((err) => alert('Could not load results for season ' + k + ': ' + err.message));
+}
+
+function loadCumulative() {
+  getCumulativeStandings()
+    .then((data) => {
+      document.getElementById('lastGradedLabel').textContent = data.lastGradedSeason || '—';
+      renderMyCumulative(data);
+      renderCumulativeLeaderboard(data.teamLeaderboardCumulative);
+    })
+    .catch((err) => alert('Could not load cumulative standings: ' + err.message));
+}
+
+async function bootstrap() {
+  await loadCurrentParticipant();
+  const overview = await getResultsOverview();
+  resultsOverview = overview;
+  if (!overview.lastGradedSeason) {
+    document.getElementById('heading').textContent = 'No Results Yet';
+    document.getElementById('myResultBody').innerHTML = '<p class="empty-note">The first season hasn\'t been graded yet -- check back after it runs.</p>';
+    document.getElementById('seasonLeaderboardBody').innerHTML = '';
+    return;
+  }
+  loadSeason(overview.lastGradedSeason);
+  loadCumulative();
+}
+
+// ==== Auth: magic link sign-in, gating the whole app until logged in (same pattern as
+// MarketInfoDisplay.html) ====
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const email = document.getElementById('loginEmail').value.trim();
+  const statusEl = document.getElementById('loginStatus');
+  if (!email) { statusEl.textContent = 'Enter your email first.'; return; }
+  statusEl.textContent = 'Sending...';
+  const { error } = await supabaseClient.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
+  statusEl.textContent = error ? ('Error: ' + error.message) : 'Check your email for a sign-in link.';
+});
+
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appRoot').style.display = 'block';
+    bootstrap().catch((err) => alert('Could not load results: ' + err.message));
+  } else {
+    document.getElementById('loginScreen').style.display = 'block';
+    document.getElementById('appRoot').style.display = 'none';
+  }
+});
+</script>
+</div>
+</body>
+</html>
