@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Market Information Display — Part I, Seasons 1-5</title>
+<style>
+  :root {
+    --bg: #FAF6EE; --panel: #ffffff; --ink: #1a1a2e; --muted: #5a5a72;
+    --supply: #2563a8; --demand: #b03a2e; --demand2: #c0392b; --supply2: #3a7bc0;
+    --new-eq: #1d7a3a; --old-eq: #6b6b7d; --gap: #d97706; --border: #e0dbd0;
+    --shadow: 0 4px 24px rgba(26,26,46,0.10); --radius: 12px;
+    --paper-line: #E4DCC8; --rust: #A6491F; --rust-dark: #7E3517; --sage: #5B7553; --gold: #B98A2E;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg);
+    background-image: linear-gradient(var(--paper-line) 1px, transparent 1px), linear-gradient(90deg, var(--paper-line) 1px, transparent 1px);
+    background-size: 28px 28px; color: var(--ink);
+    font-family: Georgia, "Iowan Old Style", serif;
+    padding: 26px 16px 60px;
+  }
+  .controls { max-width: 1040px; margin: 0 auto 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .controls .stepper { display: flex; align-items: center; gap: 8px; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 12.5px; color: var(--muted); }
+  .controls .stepper button { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--ink); background: var(--panel); cursor: pointer; font-size: 14px; }
+  .controls .note { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11.5px; color: var(--muted); font-style: italic; }
+
+  .season-row { max-width: 1040px; margin: 0 auto 18px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .part-row { max-width: 1040px; margin: 0 auto 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .part-pill {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 700;
+    padding: 10px 18px; border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  }
+  .part-pill .part-range { font-weight: 400; font-size: 11px; opacity: 0.85; }
+  .part-pill.completed { background: #F3F7F1; border: 1.5px solid var(--sage); color: var(--sage); }
+  .part-pill.completed:hover { background: var(--sage); color: white; }
+  .part-pill.active { background: var(--rust); border: 1.5px solid var(--rust-dark); color: white; }
+  .part-pill.active.selected { outline: 3px solid #7E3517; outline-offset: 1px; }
+  .part-pill.future { background: #EDE8DA; border: 1.5px solid var(--paper-line); color: var(--muted); cursor: not-allowed; }
+  .part-pill.selected:not(.active) { background: var(--sage); color: white; }
+  .season-btn {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 600;
+    padding: 9px 15px; border-radius: 20px; border: 1px solid var(--ink); background: var(--panel); color: var(--ink); cursor: pointer;
+  }
+  .season-btn:hover:not(.locked) { background: var(--ink); color: var(--bg); }
+  .season-btn.active { background: var(--rust); border-color: var(--rust-dark); color: white; }
+  .season-btn.locked { background: #EDE8DA; color: var(--muted); border-color: var(--paper-line); cursor: not-allowed; }
+
+  .masthead { max-width: 1040px; margin: 0 auto 14px; text-align: center; }
+  .masthead .kicker { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; }
+  .masthead .kicker.pending { color: var(--rust); }
+  .masthead .kicker.done { color: var(--sage); }
+  .masthead h1 { margin: 4px 0 2px; font-size: 24px; }
+  .masthead .season-name { font-size: 14px; font-style: italic; color: var(--muted); }
+
+  .layout { display: flex; gap: 20px; width: 100%; max-width: 1040px; margin: 0 auto; align-items: flex-start; flex-wrap: wrap; }
+  .graph-card { background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); flex: 1 1 600px; padding: 16px 14px 10px; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 8px; }
+
+  .side { flex: 0 1 300px; display: flex; flex-direction: column; gap: 14px; }
+  .card { background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); padding: 16px 18px; }
+  .card h2 { font-size: 1rem; margin: 0 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 7px; }
+
+  .slider-group { display: flex; flex-direction: column; gap: 8px; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .slider-label { display: flex; justify-content: space-between; align-items: baseline; font-size: .87rem; font-weight: 600; }
+  .slider-label span { color: var(--muted); font-weight: 400; font-size: .8rem; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 3px; background: #d1cec8; outline: none; cursor: pointer; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--new-eq); border: 3px solid #fff; box-shadow: 0 1px 6px rgba(0,0,0,.25); }
+  input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--new-eq); border: 3px solid #fff; }
+
+  .readout { display: grid; gap: 8px; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .readout-row { display: flex; justify-content: space-between; align-items: center; font-size: .85rem; }
+  .readout-label { color: var(--muted); }
+  .readout-value { font-weight: 600; font-variant-numeric: tabular-nums; font-size: .9rem; }
+  .val-eq { color: var(--new-eq); } .val-gap { color: var(--gap); } .val-old { color: var(--old-eq); }
+
+  .legend { display: flex; flex-direction: column; gap: 7px; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: .83rem; }
+  .legend-swatch { width: 26px; height: 4px; border-radius: 2px; flex-shrink: 0; }
+  .legend-swatch.dashed { background: repeating-linear-gradient(90deg, currentColor 0, currentColor 5px, transparent 5px, transparent 10px); }
+
+  .narrative { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: .85rem; line-height: 1.6; color: var(--muted); }
+  .narrative strong { color: var(--ink); }
+  .event-panel { border-radius: 8px; padding: 14px 16px; }
+  .event-panel.pending { background: #FBF3E3; border: 1px solid var(--gold); }
+  .event-panel.done { background: #F3F7F1; border: 1px solid var(--sage); }
+  .event-panel .event-label { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .event-panel.pending .event-label { color: var(--gold); }
+  .event-panel.done .event-label { color: var(--sage); }
+  .event-panel .event-text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.5; }
+
+  @media (max-width: 640px) { .layout { flex-direction: column; } .side { flex: 1 1 auto; width: 100%; } }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<div id="loginScreen" style="max-width:420px;margin:80px auto;text-align:center;font-family:Georgia,serif;">
+  <h1 style="font-size:22px;">Burgerville</h1>
+  <p style="font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#5a5a72;font-size:14px;">
+    Enter your email to get a 6-digit sign-in code. No password needed.
+  </p>
+  <div id="loginStep1">
+    <input id="loginEmail" type="email" placeholder="you@example.edu"
+      style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid #c9c2ae;font-family:-apple-system,sans-serif;font-size:14px;margin-bottom:10px;">
+    <button id="loginBtn" style="width:100%;padding:10px;border-radius:6px;border:none;background:#A6491F;color:white;font-family:-apple-system,sans-serif;font-size:14px;font-weight:600;cursor:pointer;">
+      Send code
+    </button>
+  </div>
+  <div id="loginStep2" style="display:none;">
+    <p style="font-family:-apple-system,sans-serif;font-size:13px;color:#5a5a72;">Enter the 6-digit code from your email:</p>
+    <input id="loginCode" type="text" inputmode="numeric" placeholder="123456" maxlength="6"
+      style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid #c9c2ae;font-family:-apple-system,sans-serif;font-size:18px;letter-spacing:4px;text-align:center;margin-bottom:10px;">
+    <button id="verifyBtn" style="width:100%;padding:10px;border-radius:6px;border:none;background:#A6491F;color:white;font-family:-apple-system,sans-serif;font-size:14px;font-weight:600;cursor:pointer;">
+      Verify code
+    </button>
+  </div>
+  <p id="loginStatus" style="font-family:-apple-system,sans-serif;font-size:13px;color:#5a5a72;margin-top:12px;"></p>
+</div>
+
+<div id="appRoot" style="display:none;">
+
+<div class="part-row" id="partRow"></div>
+<div class="season-row" id="seasonRow"></div>
+
+<div class="masthead">
+  <div class="kicker" id="kicker">Season</div>
+  <h1 id="heading">Market Information</h1>
+  <div class="season-name" id="seasonName"></div>
+</div>
+
+<div class="layout">
+  <div class="graph-card">
+    <canvas id="chart" width="700" height="480"></canvas>
+    <div class="event-panel" id="eventPanel" style="margin-top:10px;">
+      <div class="event-label" id="eventLabel">What's happening this season</div>
+      <div class="event-text" id="shockText"></div>
+      <div class="event-text" id="magnitudeHints" style="margin-top:8px;font-weight:600;"></div>
+    </div>
+    <div class="card" style="box-shadow:none;border:none;border-top:1px solid var(--border);border-radius:0;margin-top:8px;padding-top:14px;">
+      <h2>Market Outcomes</h2>
+      <div class="readout" id="readout"></div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card" id="sliderCard">
+      <h2 id="sliderCardTitle">Watch the Adjustment</h2>
+      <div class="slider-group" id="adjustGroup">
+        <div class="slider-label">Progress <span id="progressLabel">0%</span></div>
+        <input type="range" id="progressSlider" min="0" max="100" step="1" value="0" />
+        <div style="display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted)">
+          <span>Before</span><span>After</span>
+        </div>
+      </div>
+      <div class="slider-group" id="predictGroup" style="display:none;">
+        <p class="narrative" style="margin:0 0 4px;">Drag the curves to illustrate your prediction.</p>
+        <div class="slider-label">Demand shift</div>
+        <input type="range" id="demandSlider" min="-10" max="10" step="0.1" value="0" />
+        <div class="slider-label" style="margin-top:10px;">Supply shift</div>
+        <input type="range" id="supplySlider" min="-10" max="10" step="0.1" value="0" />
+        <button id="resetPredictionBtn" style="margin-top:12px;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid var(--muted);background:var(--panel);color:var(--muted);cursor:pointer;">Reset</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div style="max-width:1040px;margin:14px auto 0;">
+  <p class="narrative" id="narrative"></p>
+</div>
+
+<div style="max-width:1040px;margin:16px auto 0;">
+  <div class="card" id="formCard">
+    <h2 id="formTitle">Submit Your Prediction</h2>
+    <div id="deadlineBanner" style="margin-bottom:14px;padding:8px 12px;border-radius:6px;background:#FBF3E3;border:1px solid var(--gold);color:#7a5c14;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;font-weight:600;"></div>
+    <div id="formFields" style="display:grid;grid-template-columns:1fr 1fr;gap:14px 20px;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;"></div>
+    <button id="submitBtn" style="margin-top:16px;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13.5px;font-weight:600;padding:10px 18px;border-radius:6px;border:none;background:var(--rust);color:white;cursor:pointer;">Submit Prediction</button>
+    <div id="formConfirm" style="display:none;margin-top:12px;padding:10px 14px;border-radius:6px;background:#F3F7F1;border:1px solid var(--sage);color:var(--sage);font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;">✓ Prediction submitted for this season.</div>
+  </div>
+  <div class="card" id="formDoneCard" style="display:none;">
+    <h2>This Round Is Closed</h2>
+    <p class="narrative" style="margin:0;">You already submitted your prediction for this season — check the results page once the season has run.</p>
+  </div>
+</div>
+
+<script>
+const Q_UNIT = 1e9; // display axis in billions
+
+// ==== Supabase setup ====
+// Fill these in after creating your Supabase project (Project Settings -> API).
+const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR-ANON-KEY';
+// Single-instance for now, matching Phase 1's scope -- this is the natural place to make the
+// instance selectable (e.g. from a URL parameter) when building out real multi-instance support.
+const INSTANCE_ID = 'demo';
+
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const SUBMISSION_TABLE = {
+  I: 'submissions_part_i', II: 'submissions_part_ii',
+  IIIProfit: 'submissions_part_iii_profit', IIIRegulation: 'submissions_part_iii_regulation'
+};
+
+/** Calls one of the three Edge Functions (get-parts-overview, get-market-info), passing the
+ * current user's JWT so the function can verify who's asking. */
+async function callEdgeFunction(name, body) {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+    body: JSON.stringify(body)
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || ('Request to ' + name + ' failed'));
+  return json;
+}
+
+/** Reads the current user's roster row directly -- safe as a direct query, since RLS already
+ * restricts participants to your own row only (no Edge Function needed for this). */
+async function loadCurrentParticipant() {
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  const { data } = await supabaseClient.from('participants').select('*')
+    .eq('id', user.id).eq('instance_id', INSTANCE_ID).maybeSingle();
+  currentParticipant = data
+    ? { participantId: data.id, teamBrand: data.team_brand }
+    : { participantId: user.id, teamBrand: '' };
+}
+
+
+// ==== Engine mirrors (same formulas as Engine.gs) ====
+function marketDemand(price, p) { return Math.max(0, p.Q_0 - p.dQ_dP * (price + (p.Tax||0) - (p.Subsidy||0))); }
+function firmSupply(price, land, p) {
+  if (price <= 0) return 0;
+  const base = Math.pow(p.A_tech * Math.pow(land, p.Alpha_land), 1/p.Beta_cattle) * price * p.Beta_cattle / p.calf_price;
+  if (base <= 0) return 0;
+  return Math.pow(base, 1/p.Beta_cattle - 1);
+}
+function marketSupply(price, firmCount, p) {
+  if (price <= 0) return p.Imports || 0;
+  return firmSupply(price, p.Other_land, p) * firmCount + (p.Imports || 0);
+}
+function solveEq(params, firmCount) {
+  function excess(price) { return marketDemand(price, params) - marketSupply(price, firmCount, params); }
+  let lo = 0, hi = params.Q_0/params.dQ_dP || 1;
+  let guard = 0;
+  while (excess(hi) > 0 && guard < 60) { hi *= 2; guard++; }
+  for (let i = 0; i < 100; i++) {
+    const mid = (lo+hi)/2, e = excess(mid);
+    if (Math.abs(e) < 1) { lo = mid; hi = mid; break; }
+    if (e > 0) lo = mid; else hi = mid;
+  }
+  const price = (lo+hi)/2;
+  return { price, quantity: marketDemand(price, params) };
+}
+function lerp(a, b, t) { return a + (b-a)*t; }
+function lerpParams(oldP, newP, t) {
+  const out = {};
+  for (const k in newP) out[k] = lerp(oldP[k]||0, newP[k]||0, t);
+  return out;
+}
+function detectShift(oldS, newS) {
+  const refPrice = oldS.price;
+  const didDemandShift = Math.abs(marketDemand(refPrice, newS.params) - marketDemand(refPrice, oldS.params)) > 1e6;
+  const didSupplyShift = Math.abs(marketSupply(refPrice, newS.firmCount, newS.params) - marketSupply(refPrice, oldS.firmCount, oldS.params)) > 1e6;
+  return { didDemandShift, didSupplyShift };
+}
+function fmtMoney(x) { return "$" + x.toFixed(2); }
+function fmtQty(x) { return (x/Q_UNIT).toFixed(2) + " B lb."; }
+
+// ==== Canvas setup ====
+const canvas = document.getElementById('chart');
+const ctx = canvas.getContext('2d');
+const CW = 700, CH = 480;
+const M = { top: 30, right: 70, bottom: 55, left: 78 };
+const GW = CW - M.left - M.right, GH = CH - M.top - M.bottom;
+
+function setupCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = CW * dpr; canvas.height = CH * dpr;
+  canvas.style.width = CW + 'px'; canvas.style.height = CH + 'px';
+  ctx.scale(dpr, dpr);
+}
+
+function drawLine(pts, color, lw, dash=[]) {
+  if (pts.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.setLineDash(dash);
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.stroke(); ctx.restore();
+}
+
+function drawArrow(x1, y1, x2, y2, color, lw, label, labelSide) {
+  const dx = x2-x1, dy = y2-y1, len = Math.sqrt(dx*dx+dy*dy);
+  if (len < 4) return;
+  const ux = dx/len, uy = dy/len, hs = Math.max(8, Math.min(14.4, len*0.35*1.2));
+  ctx.save();
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-ux*hs-uy*hs*.5, y2-uy*hs+ux*hs*.5);
+  ctx.lineTo(x2-ux*hs+uy*hs*.5, y2-uy*hs-ux*hs*.5);
+  ctx.closePath(); ctx.fill();
+  if (label) {
+    ctx.font = 'bold 11px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const mx = (x1+x2)/2, my = (y1+y2)/2, offset = 15;
+    const perpX = -uy*offset*(labelSide||1), perpY = ux*offset*(labelSide||1);
+    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 3.5; ctx.lineJoin='round';
+    ctx.strokeText(label, mx+perpX, my+perpY);
+    ctx.fillStyle = color;
+    ctx.fillText(label, mx+perpX, my+perpY);
+  }
+  ctx.restore();
+}
+
+function labelCurve(x, y, text, color, align='left') {
+  ctx.save(); ctx.font = 'bold 13px Georgia, serif'; ctx.fillStyle = color;
+  ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y); ctx.restore();
+}
+
+// ==== Transition state ====
+let currentTransition = null; // { oldS, newS, side, domain }
+let sliderT = 0, targetT = 0, rafId = null;
+
+function computeDomain(oldS, newS) {
+  const pMax = Math.max(oldS.params.Q_0/oldS.params.dQ_dP, newS.params.Q_0/newS.params.dQ_dP) * 1.15;
+  const qMax = Math.max(oldS.params.Q_0, newS.params.Q_0) * 1.05;
+  return { pMax, qMax };
+}
+
+function setupTransition(oldS, newS, showArrows) {
+  const shift = detectShift(oldS, newS);
+  let side = null;
+  if (shift.didDemandShift) side = 'demand';
+  else if (shift.didSupplyShift) side = 'supply';
+  currentTransition = { oldS, newS, side, showArrows: showArrows !== false, domain: computeDomain(oldS, newS) };
+  sliderT = 0; targetT = 0;
+  document.getElementById('progressSlider').value = 0;
+  document.getElementById('progressLabel').textContent = '0%';
+}
+
+// ==== Interactive prediction mode (pending season only) ====
+// Two independently-draggable curves, not a replay of a resolved historical shift -- so this
+// is a separate rendering path from the transition system above, not a variant of it.
+let predictionBaseline = null; // the current (pre-fire) season object
+const MAX_OFFSET = 10 * Q_UNIT; // slider range: +/- 10 billion lb.
+let demandOffset = 0, supplyOffset = 0;
+let showPredictedEq = true; // instructor-configurable: hide the solved answer in later rounds
+
+function setupPrediction(baseline, showEq) {
+  predictionBaseline = baseline;
+  showPredictedEq = showEq !== false;
+  demandOffset = 0; supplyOffset = 0;
+  document.getElementById('demandSlider').value = 0;
+  document.getElementById('supplySlider').value = 0;
+}
+
+function predictionDomain() {
+  const b = predictionBaseline;
+  // pMax must accommodate the LARGEST possible demand shift, not just the baseline curve --
+  // a rightward shift raises the demand curve's own price intercept ((Q_0+offset)/dQ_dP), and
+  // if pMax doesn't grow to match, that curve gets cut off at the top of the chart before it
+  // ever reaches quantity=0, instead of reaching the axis the way the baseline curve does.
+  const pMax = ((b.params.Q_0 + MAX_OFFSET) / b.params.dQ_dP) * 1.15;
+  const qMax = (b.params.Q_0 + MAX_OFFSET) * 1.05;
+  return { pMax, qMax };
+}
+
+function drawPrediction() {
+  const b = predictionBaseline;
+  const { pMax, qMax } = predictionDomain();
+  ctx.clearRect(0, 0, CW, CH);
+
+  function toX(q) { return M.left + (q/qMax) * GW; }
+  function toY(p) { return M.top + (pMax-p)/pMax * GH; }
+
+  const draggedDemand = p => Math.max(0, (b.params.Q_0 - b.params.dQ_dP*(p + (b.params.Tax||0) - (b.params.Subsidy||0))) + demandOffset);
+  const draggedSupply = p => Math.max(0, marketSupply(p, b.firmCount, b.params) + supplyOffset);
+  const hasMoved = demandOffset !== 0 || supplyOffset !== 0;
+
+  // Compute the predicted equilibrium EARLY so its value can be added as an axis tick
+  // alongside the current-equilibrium tick, instead of cluttering the plot area itself.
+  let predicted = null;
+  if (hasMoved) {
+    function excess(p) { return draggedDemand(p) - draggedSupply(p); }
+    let lo = 0, hi = pMax, guard = 0;
+    while (excess(hi) > 0 && guard < 60) { hi *= 1.5; guard++; }
+    for (let i = 0; i < 100; i++) { const mid=(lo+hi)/2, e=excess(mid); if (Math.abs(e)<1) { lo=mid; hi=mid; break; } if (e>0) lo=mid; else hi=mid; }
+    const newP = (lo+hi)/2;
+    predicted = { price: newP, quantity: draggedDemand(newP) };
+  }
+  const showPred = hasMoved && showPredictedEq && predicted;
+
+  // Axes (borders)
+  ctx.save(); ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(M.left, M.top); ctx.lineTo(M.left, M.top+GH+6);
+  ctx.moveTo(M.left-6, M.top+GH); ctx.lineTo(M.left+GW, M.top+GH); ctx.stroke(); ctx.restore();
+
+  ctx.save(); ctx.font = '11px "Segoe UI", sans-serif'; ctx.fillStyle = '#555';
+  const eqPrice = b.price, priceTopK = 5;
+  const priceRelStep = (pMax/eqPrice - 1) / priceTopK;
+  for (let k = -10; k <= priceTopK; k++) {
+    const p = eqPrice * (1 + priceRelStep*k);
+    if (p < 0 || p > pMax + 1e-6) continue;
+    const y = toY(p);
+    ctx.beginPath(); ctx.moveTo(M.left-4,y); ctx.lineTo(M.left,y); ctx.strokeStyle='#aaa'; ctx.lineWidth=1; ctx.stroke();
+    ctx.textAlign='right'; ctx.textBaseline='middle';
+    if (k === 0) { ctx.font='bold 11px "Segoe UI",sans-serif'; ctx.fillStyle='#1d7a3a'; ctx.fillText('$'+p.toFixed(2), M.left-7, y); ctx.font='11px "Segoe UI",sans-serif'; ctx.fillStyle='#555'; }
+    else ctx.fillText('$'+p.toFixed(2), M.left-7, y);
+  }
+  const y0 = toY(0);
+  ctx.beginPath(); ctx.moveTo(M.left-4,y0); ctx.lineTo(M.left,y0); ctx.strokeStyle='#aaa'; ctx.lineWidth=1; ctx.stroke();
+  ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText('$0.00', M.left-7, y0);
+  if (showPred) {
+    const py = toY(predicted.price);
+    ctx.beginPath(); ctx.moveTo(M.left-4,py); ctx.lineTo(M.left,py); ctx.strokeStyle='#000'; ctx.lineWidth=1.4; ctx.stroke();
+    ctx.font='bold 11px "Segoe UI",sans-serif'; ctx.fillStyle='#000'; ctx.textAlign='right'; ctx.textBaseline='middle';
+    ctx.fillText('$'+predicted.price.toFixed(2), M.left-7, py);
+    ctx.font='11px "Segoe UI",sans-serif'; ctx.fillStyle='#555';
+  }
+
+  const eqQty = b.quantity, qRelStep = 0.15;
+  for (let k = -8; k <= 8; k++) {
+    const q = eqQty * (1 + qRelStep*k);
+    if (q < 0 || q > qMax) continue;
+    const x = toX(q);
+    ctx.beginPath(); ctx.moveTo(x,M.top+GH); ctx.lineTo(x,M.top+GH+4); ctx.strokeStyle='#aaa'; ctx.lineWidth=1; ctx.stroke();
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    if (k === 0) { ctx.font='bold 11px "Segoe UI",sans-serif'; ctx.fillStyle='#1d7a3a'; ctx.fillText((q/Q_UNIT).toFixed(1), x, M.top+GH+7); ctx.font='11px "Segoe UI",sans-serif'; ctx.fillStyle='#555'; }
+    else ctx.fillText((q/Q_UNIT).toFixed(1), x, M.top+GH+7);
+  }
+  if (showPred) {
+    const px = toX(predicted.quantity);
+    ctx.beginPath(); ctx.moveTo(px,M.top+GH); ctx.lineTo(px,M.top+GH+4); ctx.strokeStyle='#000'; ctx.lineWidth=1.4; ctx.stroke();
+    ctx.font='bold 11px "Segoe UI",sans-serif'; ctx.fillStyle='#000'; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText((predicted.quantity/Q_UNIT).toFixed(1), px, M.top+GH+21);
+  }
+  ctx.font = 'bold 12px "Segoe UI", sans-serif'; ctx.fillStyle='#333';
+  ctx.save(); ctx.translate(16, M.top+GH/2); ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('Price ($/lb.)', 0, 0); ctx.restore();
+  ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillText('Quantity (billion lb.)', M.left+GW/2, CH-6);
+  ctx.restore();
+
+  function sample(fn) {
+    const pts = [];
+    for (let i = 0; i <= 40; i++) { const p = (pMax/40)*i, q = fn(p); if (q <= qMax*1.05) pts.push([toX(q), toY(p)]); }
+    return pts;
+  }
+  // Demand needs its OWN sampler: marketDemand() floors at 0 once price exceeds that curve's
+  // intercept, and sampling all the way to the shared pMax would keep adding points at that
+  // floor -- all mapping to the same x (quantity=0) -- which draws as a spurious vertical line
+  // instead of letting the curve simply end where it actually reaches the axis.
+  function sampleDemand(offset) {
+    offset = offset || 0;
+    const intercept = (b.params.Q_0 + offset) / b.params.dQ_dP - (b.params.Tax||0) + (b.params.Subsidy||0);
+    const cap = Math.min(pMax, intercept);
+    const pts = [];
+    for (let i = 0; i <= 40; i++) {
+      const p = (cap/40)*i;
+      // IMPORTANT: compute the raw (unclamped) value and add the offset BEFORE clamping at
+      // zero. Clamping first (via marketDemand(), which floors at the BASELINE's own
+      // intercept) and adding the offset afterward was the actual bug -- it made every price
+      // between the baseline's intercept and the dragged curve's intercept evaluate to the
+      // same constant value, which draws as a vertical line instead of the correct diagonal.
+      const rawQ = b.params.Q_0 - b.params.dQ_dP * (p + (b.params.Tax||0) - (b.params.Subsidy||0));
+      const q = Math.max(0, rawQ + offset);
+      if (q <= qMax*1.05) pts.push([toX(q), toY(p)]);
+    }
+    return pts;
+  }
+
+  // Baseline curves (current, pre-fire state) -- always shown as the fixed reference.
+  const baseDemandPts = sampleDemand(0);
+  const baseSupplyPts = sample(p => marketSupply(p, b.firmCount, b.params));
+  drawLine(baseDemandPts, 'rgba(176,58,46,0.45)', 2.2, [6,5]);
+  drawLine(baseSupplyPts, 'rgba(37,99,168,0.45)', 2.2, [6,5]);
+  if (baseDemandPts.length) labelCurve(baseDemandPts[0][0]+8, baseDemandPts[0][1], 'D', 'rgba(176,58,46,0.6)');
+  if (baseSupplyPts.length) labelCurve(baseSupplyPts[baseSupplyPts.length-1][0]+8, baseSupplyPts[baseSupplyPts.length-1][1], 'S', 'rgba(37,99,168,0.6)');
+
+  // Dragged curves (the student's prediction) -- solid, only drawn where they differ from baseline.
+  if (demandOffset !== 0) {
+    const pts = sampleDemand(demandOffset);
+    drawLine(pts, '#b03a2e', 2.6);
+    if (pts.length) labelCurve(pts[0][0]+8, pts[0][1]-14, "D′", '#b03a2e');
+  }
+  if (supplyOffset !== 0) {
+    const pts = sample(draggedSupply);
+    drawLine(pts, '#2563a8', 2.6);
+    if (pts.length) labelCurve(pts[pts.length-1][0]+8, pts[pts.length-1][1]-14, "S′", '#2563a8');
+  }
+
+  // Current equilibrium -- green dashed guides down to the axis ticks labeled above; no text
+  // drawn in the plot area itself.
+  const bx = toX(b.quantity), by = toY(b.price);
+  drawLine([[M.left,by],[bx,by]], 'rgba(29,122,58,0.5)', 1, [5,4]);
+  drawLine([[bx,by],[bx,M.top+GH]], 'rgba(29,122,58,0.5)', 1, [5,4]);
+  ctx.beginPath(); ctx.arc(bx,by,4.5,0,Math.PI*2); ctx.fillStyle='#1d7a3a'; ctx.fill();
+
+  // Brown arrows: the horizontal shift the student has dragged each curve, sitting exactly on
+  // the current equilibrium's price line -- NOT the black "movement along the curve" arrows
+  // used for resolved history.
+  const refPrice = b.price, refY = toY(refPrice);
+  if (demandOffset !== 0) {
+    const from = marketDemand(refPrice, b.params), to = draggedDemand(refPrice);
+    drawArrow(toX(from), refY, toX(to), refY, '#d97706', 1.9, null, -1);
+  }
+  if (supplyOffset !== 0) {
+    const from = marketSupply(refPrice, b.firmCount, b.params), to = draggedSupply(refPrice);
+    drawArrow(toX(from), refY, toX(to), refY, '#d97706', 1.9, null, 1);
+  }
+
+  // Predicted equilibrium -- black dashed guides down to the axis ticks labeled above (only
+  // when the instructor has this round's answer visible; see showPredictedEq).
+  if (showPred) {
+    const nx = toX(predicted.quantity), ny = toY(predicted.price);
+    drawLine([[M.left,ny],[nx,ny]], 'rgba(0,0,0,0.5)', 1.2, [5,4]);
+    drawLine([[nx,ny],[nx,M.top+GH]], 'rgba(0,0,0,0.5)', 1.2, [5,4]);
+    ctx.beginPath(); ctx.arc(nx,ny,4.5,0,Math.PI*2); ctx.fillStyle='#000'; ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.fill(); ctx.stroke();
+  }
+
+  return predicted ? { price: predicted.price, quantity: predicted.quantity, hidden: !showPredictedEq } : { price: b.price, quantity: b.quantity, hidden: false };
+}
+
+function updatePredictionReadout(predictedEq) {
+  const b = predictionBaseline;
+  const readout = document.getElementById('readout');
+  const moved = demandOffset !== 0 || supplyOffset !== 0;
+  const hidden = moved && predictedEq.hidden;
+  const predictedCell = !moved ? '—' : (hidden ? '<span style="color:var(--muted);font-style:italic;">Hidden this round</span>' : null);
+  readout.innerHTML = `
+    <div class="readout-row"><span class="readout-label">Current Price</span><span class="readout-value val-eq">${fmtMoney(b.price)}</span></div>
+    <div class="readout-row"><span class="readout-label">Current Qty.</span><span class="readout-value val-eq">${fmtQty(b.quantity)}</span></div>
+    <hr style="border:none;border-top:1px solid var(--border)">
+    <div class="readout-row"><span class="readout-label">Your Predicted Price</span><span class="readout-value" style="color:#000;">${predictedCell !== null ? predictedCell : fmtMoney(predictedEq.price)}</span></div>
+    <div class="readout-row"><span class="readout-label">Your Predicted Qty.</span><span class="readout-value" style="color:#000;">${predictedCell !== null ? predictedCell : fmtQty(predictedEq.quantity)}</span></div>`;
+  document.getElementById('narrative').innerHTML = !moved
+    ? 'Drag the demand and/or supply sliders in the sidebar to illustrate your prediction.'
+    : hidden
+      ? 'This round, the exact predicted equilibrium is not shown -- use the curves and arrows to reason through where they\'d settle, then enter your answer on the form below.'
+      : 'Drag both sliders until the black dot lands where you think the market will settle.';
+}
+
+function refreshPrediction() {
+  const eq = drawPrediction();
+  updatePredictionReadout(eq);
+}
+
+document.getElementById('demandSlider').addEventListener('input', function() {
+  demandOffset = parseFloat(this.value) * Q_UNIT; refreshPrediction();
+});
+document.getElementById('supplySlider').addEventListener('input', function() {
+  supplyOffset = parseFloat(this.value) * Q_UNIT; refreshPrediction();
+});
+document.getElementById('resetPredictionBtn').addEventListener('click', function() {
+  demandOffset = 0; supplyOffset = 0;
+  document.getElementById('demandSlider').value = 0;
+  document.getElementById('supplySlider').value = 0;
+  refreshPrediction();
+});
+
+function stateAtT(t) {
+  const { oldS, newS } = currentTransition;
+  const params = lerpParams(oldS.params, newS.params, t);
+  const firmCount = lerp(oldS.firmCount, newS.firmCount, t);
+  const eq = (t === 0) ? { price: oldS.price, quantity: oldS.quantity }
+    : (t === 1) ? { price: newS.price, quantity: newS.quantity }
+    : solveEq(params, firmCount);
+  return { params, firmCount, eq };
+}
+
+function draw(t) {
+  const { oldS, newS, side, domain, showArrows } = currentTransition;
+  const { pMax, qMax } = domain;
+  ctx.clearRect(0, 0, CW, CH);
+
+  function toX(q) { return M.left + (q/qMax) * GW; }
+  function toY(p) { return M.top + (pMax-p)/pMax * GH; }
+
+  // Axes
+  ctx.save(); ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(M.left, M.top); ctx.lineTo(M.left, M.top+GH+6);
+  ctx.moveTo(M.left-6, M.top+GH); ctx.lineTo(M.left+GW, M.top+GH); ctx.stroke(); ctx.restore();
+
+  // Ticks
+  ctx.save(); ctx.font = '11px "Segoe UI", sans-serif'; ctx.fillStyle = '#555';
+  // Price ticks: same equilibrium-anchored idea as the quantity axis, but the STEP SIZE is
+  // derived from the demand price intercept (pMax) rather than a fixed fraction -- price
+  // intercepts sit much further above their equilibrium than quantity intercepts typically do,
+  // so a fixed step (as used for quantity) left the top of this axis empty. Anchoring the
+  // topmost tick at ~pMax (intercept + 15%) keeps ticks spanning the full chart height while
+  // still landing on irregular, non-round values.
+  const eqPrice = newS.price;
+  const priceTopK = 5;
+  const priceRelStep = (pMax / eqPrice - 1) / priceTopK;
+  for (let k = -10; k <= priceTopK; k++) {
+    const p = eqPrice * (1 + priceRelStep*k);
+    if (p < 0 || p > pMax + 1e-6) continue;
+    const y = toY(p);
+    ctx.beginPath(); ctx.moveTo(M.left-4,y); ctx.lineTo(M.left,y); ctx.strokeStyle='#aaa'; ctx.lineWidth=1; ctx.stroke();
+    ctx.textAlign='right'; ctx.textBaseline='middle';
+    if (k === 0) {
+      ctx.font = 'bold 11px "Segoe UI", sans-serif'; ctx.fillStyle = '#1d7a3a';
+      ctx.fillText('$'+p.toFixed(2)+' (Eq.)', M.left-7, y);
+      ctx.font = '11px "Segoe UI", sans-serif'; ctx.fillStyle = '#555';
+    } else {
+      ctx.fillText('$'+p.toFixed(2), M.left-7, y);
+    }
+  }
+  // Explicit baseline at $0, same as any normal axis would show.
+  const y0 = toY(0);
+  ctx.beginPath(); ctx.moveTo(M.left-4,y0); ctx.lineTo(M.left,y0); ctx.strokeStyle='#aaa'; ctx.lineWidth=1; ctx.stroke();
+  ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText('$0.00', M.left-7, y0);
+  // Quantity ticks: positioned at fractions/multiples of the equilibrium quantity (not round
+  // numbers), and labeled with their actual value in billions. The equilibrium is called out
+  // clearly, but since the surrounding gridlines land on whatever irregular values fall out of
+  // the equilibrium itself rather than clean round numbers, the exact demand intercept isn't
+  // something a viewer can just read straight off the axis.
+  const eqQty = newS.quantity;
+  const relStep = 0.15;
+  for (let k = -8; k <= 8; k++) {
+    const q = eqQty * (1 + relStep*k);
+    if (q < 0 || q > qMax) continue;
+    const x = toX(q);
+    ctx.beginPath(); ctx.moveTo(x,M.top+GH); ctx.lineTo(x,M.top+GH+4); ctx.strokeStyle='#aaa'; ctx.lineWidth=1; ctx.stroke();
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    if (k === 0) {
+      ctx.font = 'bold 11px "Segoe UI", sans-serif'; ctx.fillStyle = '#1d7a3a';
+      ctx.fillText((q/Q_UNIT).toFixed(1) + ' (Eq.)', x, M.top+GH+7);
+      ctx.font = '11px "Segoe UI", sans-serif'; ctx.fillStyle = '#555';
+    } else {
+      ctx.fillText((q/Q_UNIT).toFixed(1), x, M.top+GH+7);
+    }
+  }
+  ctx.font = 'bold 12px "Segoe UI", sans-serif'; ctx.fillStyle='#333';
+  ctx.save(); ctx.translate(16, M.top+GH/2); ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('Price ($/lb.)', 0, 0); ctx.restore();
+  ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillText('Quantity (billion lb.)', M.left+GW/2, CH-6);
+  ctx.restore();
+
+  function sample(fn) {
+    const pts = [];
+    for (let i = 0; i <= 40; i++) {
+      const p = (pMax/40)*i, q = fn(p);
+      if (q <= qMax*1.1) pts.push([toX(q), toY(p)]);
+    }
+    return pts;
+  }
+  // Demand-specific sampler: marketDemand() floors at 0 past that curve's own price intercept,
+  // and sampling all the way to the shared pMax would add a run of clamped-zero points (all at
+  // the same x) that draws as a spurious vertical line. Stop at the curve's own intercept instead.
+  function sampleDemand(params) {
+    const intercept = params.Q_0 / params.dQ_dP - (params.Tax||0) + (params.Subsidy||0);
+    const cap = Math.min(pMax, intercept);
+    const pts = [];
+    for (let i = 0; i <= 40; i++) {
+      const p = (cap/40)*i, q = marketDemand(p, params);
+      if (q <= qMax*1.1) pts.push([toX(q), toY(p)]);
+    }
+    return pts;
+  }
+
+  if (!side) {
+    // Nothing shifted -- just draw the static market.
+    const supplyPts = sample(p => marketSupply(p, newS.firmCount, newS.params));
+    const demandPts = sampleDemand(newS.params);
+    drawLine(supplyPts, '#2563a8', 2.5);
+    drawLine(demandPts, '#b03a2e', 2.5);
+    if (supplyPts.length) labelCurve(supplyPts[supplyPts.length-1][0]+8, supplyPts[supplyPts.length-1][1], 'S', '#2563a8');
+    if (demandPts.length) labelCurve(demandPts[0][0]+8, demandPts[0][1], 'D', '#b03a2e');
+    const eqX = toX(newS.quantity), eqY = toY(newS.price);
+    drawLine([[M.left,eqY],[eqX,eqY]], '#888', 1, [5,4]);
+    drawLine([[eqX,eqY],[eqX,M.top+GH]], '#888', 1, [5,4]);
+    ctx.beginPath(); ctx.arc(eqX,eqY,4.1,0,Math.PI*2); ctx.fillStyle='#1d7a3a'; ctx.fill();
+    return;
+  }
+
+  const st = stateAtT(t);
+  const alpha = Math.min(t*1.3 + 0.02, 1);
+  const oldFade = Math.max(0.22, 1 - t); // old (pre-shift) curve/equilibrium fades out as the animation progresses
+
+  // Stable curve (doesn't move) -- always drawn solid at full strength.
+  if (side === 'demand') {
+    const pts = sample(p => marketSupply(p, newS.firmCount, newS.params));
+    drawLine(pts, '#2563a8', 2.5);
+    if (pts.length) labelCurve(pts[pts.length-1][0]+8, pts[pts.length-1][1], 'S', '#2563a8');
+  } else {
+    const pts = sampleDemand(newS.params);
+    drawLine(pts, '#b03a2e', 2.5);
+    if (pts.length) labelCurve(pts[0][0]+8, pts[0][1], 'D', '#b03a2e');
+  }
+
+  // Shifting curve: original (t=0) position, fading OUT as t increases so it's unambiguous
+  // that the current (t) position is where things stand now.
+  if (side === 'demand') {
+    const oldCol = `rgba(176,58,46,${oldFade})`;
+    const pts = sampleDemand(oldS.params);
+    drawLine(pts, oldCol, 2.5);
+    if (pts.length) labelCurve(pts[0][0]+8, pts[0][1], 'D', oldCol);
+  } else {
+    const oldCol = `rgba(37,99,168,${oldFade})`;
+    const pts = sample(p => marketSupply(p, oldS.firmCount, oldS.params));
+    drawLine(pts, oldCol, 2.5);
+    if (pts.length) labelCurve(pts[pts.length-1][0]+8, pts[pts.length-1][1], 'S', oldCol);
+  }
+  // ...and its CURRENT (t) position, fading in as a distinctly-shaded moving line.
+  if (t > 0.015) {
+    if (side === 'demand') {
+      const col = `rgba(192,57,43,${alpha})`;
+      const pts = sampleDemand(st.params);
+      drawLine(pts, col, 2.5);
+      if (pts.length) labelCurve(pts[0][0]+8, pts[0][1]-14, "D′", col);
+    } else {
+      const col = `rgba(58,123,192,${alpha})`;
+      const pts = sample(p => marketSupply(p, st.firmCount, st.params));
+      drawLine(pts, col, 2.5);
+      if (pts.length) labelCurve(pts[pts.length-1][0]+8, pts[pts.length-1][1]-14, "S′", col);
+    }
+  }
+
+  // Original equilibrium -- also fades out as t increases.
+  const oldX = toX(oldS.quantity), oldY = toY(oldS.price);
+  drawLine([[M.left,oldY],[oldX,oldY]], `rgba(136,136,136,${oldFade})`, 1, [5,4]);
+  drawLine([[oldX,oldY],[oldX,M.top+GH]], `rgba(136,136,136,${oldFade})`, 1, [5,4]);
+  ctx.beginPath(); ctx.arc(oldX,oldY,5,0,Math.PI*2); ctx.fillStyle=`rgba(107,107,125,${oldFade})`; ctx.fill();
+
+  if (t > 0.015) {
+    if (showArrows) {
+      // Gap (shortage/surplus) at the ORIGINAL price, between the stable curve's quantity there
+      // (unchanged, = the old equilibrium quantity) and the shifting curve's CURRENT (t)
+      // quantity there. Drawn FROM the stable point TO the shifted point, so the arrow points
+      // right for an increase and left for a decrease -- not just "smaller to larger".
+      const refPrice = oldS.price;
+      const qdHere = marketDemand(refPrice, st.params);
+      const qsHere = marketSupply(refPrice, st.firmCount, st.params);
+      const gapVal = qdHere - qsHere;
+      const shiftPointQ = side === 'demand' ? qdHere : qsHere;
+      const gapColor = `rgba(217,119,6,${alpha})`;
+      if (Math.abs(gapVal) > qMax*0.003) {
+        const y = toY(refPrice);
+        drawArrow(toX(oldS.quantity), y, toX(shiftPointQ), y, gapColor, 1.76, null, -1);
+      }
+
+      // Movement along the STABLE curve, old EQ -> current EQ. Black so it stands out clearly
+      // against the colored curves.
+      const blackArrow = `rgba(0,0,0,${alpha})`;
+      drawArrow(oldX, oldY, toX(st.eq.quantity), toY(st.eq.price), blackArrow, 2.3, null, 1);
+
+      // Movement along the SHIFTING curve (at its current position), gap point -> current EQ.
+      drawArrow(toX(shiftPointQ), toY(refPrice), toX(st.eq.quantity), toY(st.eq.price), blackArrow, 2.3, null, -1);
+    }
+
+    // Current equilibrium, fading in -- 25% smaller than before so the arrowheads aren't hidden.
+    const nx = toX(st.eq.quantity), ny = toY(st.eq.price);
+    drawLine([[M.left,ny],[nx,ny]], `rgba(29,122,58,${alpha})`, 1.2, [5,4]);
+    drawLine([[nx,ny],[nx,M.top+GH]], `rgba(29,122,58,${alpha})`, 1.2, [5,4]);
+    ctx.beginPath(); ctx.arc(nx,ny,4.5,0,Math.PI*2); ctx.fillStyle=`rgba(29,122,58,${alpha})`; ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.fill(); ctx.stroke();
+  }
+}
+
+function updateSidePanel(t) {
+  const { oldS, newS, side } = currentTransition;
+  const readout = document.getElementById('readout');
+
+  if (!side) {
+    readout.innerHTML = `
+      <div class="readout-row"><span class="readout-label">Price</span><span class="readout-value val-eq">${fmtMoney(newS.price)}</span></div>
+      <div class="readout-row"><span class="readout-label">Quantity</span><span class="readout-value val-eq">${fmtQty(newS.quantity)}</span></div>`;
+    document.getElementById('narrative').innerHTML = currentTransition.showArrows
+      ? 'Nothing shifted this round — the market held at the same equilibrium.'
+      : 'This is where the market stands right now, before this season\'s news plays out.';
+    return;
+  }
+
+  const st = stateAtT(t);
+  const refPrice = oldS.price;
+  const gapVal = marketDemand(refPrice, st.params) - marketSupply(refPrice, st.firmCount, st.params);
+
+  readout.innerHTML = `
+    <div class="readout-row"><span class="readout-label">Original Price</span><span class="readout-value val-old">${fmtMoney(oldS.price)}</span></div>
+    <div class="readout-row"><span class="readout-label">Original Qty.</span><span class="readout-value val-old">${fmtQty(oldS.quantity)}</span></div>
+    <hr style="border:none;border-top:1px solid var(--border)">
+    <div class="readout-row"><span class="readout-label">${gapVal>=0?'Shortage':'Surplus'} at ${fmtMoney(refPrice)}</span><span class="readout-value val-gap">${t>0.015 ? fmtQty(Math.abs(gapVal)) : '—'}</span></div>
+    <hr style="border:none;border-top:1px solid var(--border)">
+    <div class="readout-row"><span class="readout-label">Current Price</span><span class="readout-value val-eq">${fmtMoney(st.eq.price)}</span></div>
+    <div class="readout-row"><span class="readout-label">Current Qty.</span><span class="readout-value val-eq">${fmtQty(st.eq.quantity)}</span></div>`;
+
+  if (t < 0.015) {
+    document.getElementById('narrative').innerHTML = `Drag the slider to watch ${side} shift and the market find a new equilibrium.`;
+  } else {
+    const dir = side === 'demand' ? (newS.params.Q_0 > oldS.params.Q_0 ? 'increased' : 'decreased') : (gapVal >= 0 ? 'tightened' : 'expanded');
+    document.getElementById('narrative').innerHTML =
+      `${side[0].toUpperCase()+side.slice(1)} has ${dir}. At the original price of <strong>${fmtMoney(refPrice)}</strong>,
+       there's now a <strong style="color:var(--gap)">${gapVal>=0?'shortage':'surplus'} of ${fmtQty(Math.abs(gapVal))}</strong>.
+       Price moves to <strong style="color:var(--new-eq)">${fmtMoney(st.eq.price)}</strong>, settling quantity at
+       <strong style="color:var(--new-eq)">${fmtQty(st.eq.quantity)}</strong>.`;
+  }
+}
+
+function animate() {
+  const diff = targetT - sliderT;
+  if (Math.abs(diff) < 0.003) { sliderT = targetT; draw(sliderT); updateSidePanel(sliderT); rafId = null; return; }
+  sliderT += diff * 0.12;
+  draw(sliderT); updateSidePanel(sliderT);
+  document.getElementById('progressSlider').value = Math.round(sliderT*100);
+  document.getElementById('progressLabel').textContent = Math.round(sliderT*100)+'%';
+  rafId = requestAnimationFrame(animate);
+}
+function setT(t) { targetT = t; if (!rafId) rafId = requestAnimationFrame(animate); }
+
+document.getElementById('progressSlider').addEventListener('input', function() {
+  targetT = sliderT = parseFloat(this.value)/100;
+  document.getElementById('progressLabel').textContent = this.value+'%';
+  draw(sliderT); updateSidePanel(sliderT);
+});
+
+// ==== Per-part input form configs ====
+// Field names match the real submissions_part_* table columns (schema.sql) exactly, which is
+// exactly why the submit handler below can insert `values` directly with no field remapping.
+const partFormConfigs = {
+  I: {
+    label: 'Part I',
+    fields: [
+      { id: 'demand_answer', label: 'Demand will...', type: 'select', options: ['Increase', 'Decrease', 'No change'] },
+      { id: 'supply_answer', label: 'Supply will...', type: 'select', options: ['Increase', 'Decrease', 'No change'] },
+      { id: 'shortage_or_surplus_answer', label: 'This will create a...', type: 'select', options: ['Shortage', 'Surplus', 'Neither'] },
+      { id: 'price_direction_answer', label: 'Price will...', type: 'select', options: ['Rise', 'Fall', 'Not change'] },
+      { id: 'qd_direction_answer', label: 'Quantity demanded will...', type: 'select', options: ['Rise', 'Fall', 'Not change'] },
+      { id: 'qs_direction_answer', label: 'Quantity supplied will...', type: 'select', options: ['Rise', 'Fall', 'Not change'] },
+      { id: 'price_estimate', label: 'Estimated new price ($/lb.)', type: 'number', step: '0.01' },
+      { id: 'quantity_estimate', label: 'Estimated new quantity (billion lb.)', type: 'number', step: '0.01', scale: 1e9 },
+    ]
+  },
+  II: {
+    label: 'Part II',
+    fields: [
+      { id: 'demand_answer', label: 'Demand will...', type: 'select', options: ['Increase', 'Decrease', 'No change'] },
+      { id: 'supply_answer', label: 'Supply will...', type: 'select', options: ['Increase', 'Decrease', 'No change'] },
+      { id: 'price_answer', label: 'Price will...', type: 'select', options: ['Rise', 'Fall', 'Not change'] },
+      { id: 'qd_answer', label: 'Quantity demanded will...', type: 'select', options: ['Rise', 'Fall', 'Not change'] },
+      { id: 'qs_answer', label: 'Quantity supplied will...', type: 'select', options: ['Rise', 'Fall', 'Not change'] },
+      { id: 'price_estimate', label: 'Estimated market price ($/lb.)', type: 'number', step: '0.01' },
+      { id: 'quantity_estimate', label: 'Estimated market quantity (billion lb.)', type: 'number', step: '0.01', scale: 1e9 },
+      { id: 'land_investment', label: 'Your land investment ($)', type: 'number', step: '1' },
+      { id: 'cattle', label: 'Your cattle purchased', type: 'number', step: '1' },
+      { id: 'stated_output', label: 'Your expected output (lb.)', type: 'number', step: '1' },
+      { id: 'stated_marginal_cost', label: 'Your marginal cost ($/lb.)', type: 'number', step: '0.01' },
+    ]
+  },
+  IIIProfit: {
+    label: 'Part III — Monopoly (profit)',
+    fields: [
+      { id: 'farms', label: 'Farms you will operate', type: 'number', step: '1' },
+      { id: 'cattle', label: 'Cattle purchased', type: 'number', step: '1' },
+      { id: 'stated_monopoly_price', label: 'Your monopoly price ($/lb.)', type: 'number', step: '0.01' },
+      { id: 'stated_marginal_cost', label: 'Your marginal cost ($/lb.)', type: 'number', step: '0.01' },
+      { id: 'stated_marginal_revenue', label: 'Your marginal revenue ($/lb.)', type: 'number', step: '0.01' },
+      { id: 'stated_monopoly_quantity', label: 'Expected monopoly quantity (billion lb.)', type: 'number', step: '0.01', scale: 1e9 },
+      { id: 'stated_cs_monopoly', label: 'Consumer surplus at monopoly', type: 'number', step: '1' },
+      { id: 'stated_competitive_price', label: 'Estimated competitive price ($/lb.)', type: 'number', step: '0.01' },
+      { id: 'stated_competitive_quantity', label: 'Estimated competitive quantity (billion lb.)', type: 'number', step: '0.01', scale: 1e9 },
+      { id: 'stated_cs_competitive', label: 'Consumer surplus at competition', type: 'number', step: '1' },
+    ]
+  },
+  IIIRegulation: {
+    label: 'Part III — Regulation',
+    fields: [
+      { id: 'farms', label: 'Farms you will operate', type: 'number', step: '1' },
+      { id: 'cattle', label: 'Cattle purchased', type: 'number', step: '1' },
+      { id: 'stated_price', label: 'Your regulated price ($/lb.)', type: 'number', step: '0.01' },
+      { id: 'stated_marginal_cost', label: 'Your marginal cost ($/lb.)', type: 'number', step: '0.01' },
+      { id: 'stated_marginal_revenue', label: 'Your marginal revenue ($/lb.)', type: 'number', step: '0.01' },
+      { id: 'stated_quantity', label: 'Expected quantity (billion lb.)', type: 'number', step: '0.01', scale: 1e9 },
+      { id: 'stated_consumer_surplus', label: 'Expected consumer surplus', type: 'number', step: '1' },
+    ]
+  }
+};
+
+// Note: magnitude-hint computation now lives server-side (computeMagnitudeHintServer in
+// MarketInfoDisplay.gs) -- the client only ever receives the resulting description strings,
+// never the upcoming season's actual parameters. See applySeasonData below.
+
+let currentPart = 'I';
+let currentParticipant = { participantId: 'unknown', teamBrand: '' };
+
+function renderForm(partKey) {
+  currentPart = partKey;
+  const config = partFormConfigs[partKey];
+  document.getElementById('formTitle').textContent = 'Submit Your Prediction — ' + config.label;
+  const container = document.getElementById('formFields');
+  container.innerHTML = '';
+  config.fields.forEach(f => {
+    const wrap = document.createElement('div');
+    if (f.type === 'select') {
+      wrap.innerHTML = `<label style="display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px;">${f.label}</label>
+        <select data-field="${f.id}" style="width:100%;padding:7px 8px;border-radius:4px;border:1px solid #c9c2ae;font-family:inherit;font-size:13.5px;">
+          <option value="" disabled selected>Choose...</option>
+          ${f.options.map(o => `<option value="${o}">${o}</option>`).join('')}
+        </select>`;
+    } else {
+      wrap.innerHTML = `<label style="display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px;">${f.label}</label>
+        <input data-field="${f.id}" type="number" step="${f.step||'any'}" style="width:100%;padding:7px 8px;border-radius:4px;border:1px solid #c9c2ae;font-family:inherit;font-size:13.5px;">`;
+    }
+    container.appendChild(wrap);
+  });
+  document.getElementById('formConfirm').style.display = 'none';
+  document.getElementById('submitBtn').style.display = 'inline-block';
+  container.style.display = 'grid';
+}
+
+document.getElementById('submitBtn').addEventListener('click', async () => {
+  const inputs = document.querySelectorAll('#formFields [data-field]');
+  let allFilled = true;
+  const values = {};
+  inputs.forEach(el => {
+    if (!el.value) allFilled = false;
+    values[el.dataset.field] = el.value;
+  });
+  if (!allFilled) { alert('Please answer every question before submitting.'); return; }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.textContent = 'Submitting...';
+  try {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    const row = Object.assign({
+      instance_id: INSTANCE_ID, season_number: currentSeasonNumber,
+      participant_id: user.id, team_brand: currentParticipant.teamBrand
+    }, values);
+    // No Edge Function needed here -- RLS on submissions_part_* already enforces "own
+    // participant_id only" and "current season only" (see schema.sql), so a direct insert
+    // is exactly as safe as routing this through server code, and simpler.
+    const { error } = await supabaseClient.from(SUBMISSION_TABLE[currentPart]).insert(row);
+    if (error) throw error;
+    document.getElementById('formConfirm').style.display = 'block';
+    btn.style.display = 'none';
+    document.getElementById('formFields').querySelectorAll('select,input').forEach(el => el.disabled = true);
+  } catch (err) {
+    alert('Could not submit: ' + err.message + '\nPlease try again.');
+    btn.disabled = false; btn.textContent = 'Submit Prediction';
+  }
+});
+
+// ==== Season selector (buttons, lock behavior, pending/completed framing) ====
+let currentSeasonNumber = null, viewingSeason = null;
+
+function setSliderCardMode(mode) {
+  // mode: 'adjust' (completed season with a real shift) | 'predict' (pending season) | 'none' (completed, quiet season)
+  const card = document.getElementById('sliderCard');
+  const title = document.getElementById('sliderCardTitle');
+  const adjustGroup = document.getElementById('adjustGroup');
+  const predictGroup = document.getElementById('predictGroup');
+  if (mode === 'predict') {
+    card.style.display = 'block'; title.textContent = 'Illustrate Your Prediction';
+    adjustGroup.style.display = 'none'; predictGroup.style.display = 'flex';
+  } else if (mode === 'adjust') {
+    card.style.display = 'block'; title.textContent = 'Watch the Adjustment';
+    adjustGroup.style.display = 'flex'; predictGroup.style.display = 'none';
+  } else {
+    card.style.display = 'none';
+  }
+}
+
+/** Applies one season's server data (from getMarketInfoData) to the whole page. */
+function applySeasonData(data) {
+  const k = data.viewedSeason;
+  viewingSeason = k;
+  currentSeasonNumber = data.currentSeasonNumber;
+
+  document.getElementById('kicker').className = 'kicker ' + (data.isPending ? 'pending' : 'done');
+  document.getElementById('kicker').textContent = data.isPending ? 'Current season — not yet resolved' : 'Completed season';
+  document.getElementById('heading').textContent = 'Season ' + k;
+  document.getElementById('seasonName').textContent = data.isPending ? '' : '— ' + data.seasonName;
+
+  if (data.isPending) {
+    // Pending seasons get the interactive prediction chart -- two live-draggable curves, not
+    // a replay of any past season's data. The server never sends this season's own shock
+    // parameters here -- only the current (already-observable) baseline and a rounded hint.
+    setupPrediction(data.baseline, data.showPredictedEquilibrium);
+    refreshPrediction();
+    setSliderCardMode('predict');
+    document.getElementById('eventPanel').className = 'event-panel pending';
+    document.getElementById('eventLabel').textContent = "📰 What's happening this season";
+    document.getElementById('shockText').textContent = data.shockDescription;
+    document.getElementById('magnitudeHints').innerHTML = (data.magnitudeHints || []).map(h => '📊 ' + h).join('<br>');
+    document.getElementById('formCard').style.display = 'block';
+    document.getElementById('formDoneCard').style.display = 'none';
+    document.getElementById('deadlineBanner').textContent = data.deadline ? ('⏰ Submissions due: ' + data.deadline) : '';
+    renderForm(data.part || 'I');
+  } else {
+    setupTransition(data.oldState, data.newState, true);
+    setSliderCardMode(currentTransition.side ? 'adjust' : 'none');
+    document.getElementById('eventPanel').className = 'event-panel done';
+    document.getElementById('eventLabel').textContent = "✓ What happened this season";
+    document.getElementById('shockText').textContent = data.shockDescription;
+    document.getElementById('magnitudeHints').innerHTML = '';
+    document.getElementById('formCard').style.display = 'none';
+    document.getElementById('formDoneCard').style.display = 'block';
+    draw(0); updateSidePanel(0);
+    setT(1); // auto-play the transition once; slider stays scrubbable after
+  }
+
+  renderSeasonRow();
+}
+
+function loadSeason(k) {
+  callEdgeFunction('get-market-info', { instanceId: INSTANCE_ID, seasonNumber: k })
+    .then(applySeasonData)
+    .catch((err) => alert('Could not load season ' + k + ': ' + err.message));
+}
+
+let partsData = null; // from getPartsOverview
+let filterPart = null; // which part's seasons are currently shown in the season row
+
+function partContaining(seasonNum) {
+  return (partsData.parts || []).find(p => seasonNum >= p.startSeason && seasonNum <= p.endSeason);
+}
+
+function renderPartRow() {
+  const row = document.getElementById('partRow');
+  row.innerHTML = '';
+  partsData.parts.forEach(p => {
+    const pill = document.createElement('div');
+    pill.className = 'part-pill ' + p.status + (filterPart && filterPart.partFamily === p.partFamily ? ' selected' : '');
+    pill.innerHTML = `${p.label}<span class="part-range">Seasons ${p.startSeason}\u2013${p.endSeason}</span>`;
+    // Students can navigate backward into any completed part, and around within the active
+    // part, but can't jump ahead into a part that hasn't started yet.
+    if (p.status !== 'future') {
+      pill.onclick = () => {
+        filterPart = p;
+        renderPartRow();
+        renderSeasonRow();
+        // Jump to a sensible default when switching parts: the start of a completed part
+        // (reviewing it from the beginning), or the current pending season if it's the active part.
+        const target = p.status === 'active' ? currentSeasonNumber : p.startSeason;
+        loadSeason(target);
+      };
+    }
+    row.appendChild(pill);
+  });
+}
+
+function renderSeasonRow() {
+  const row = document.getElementById('seasonRow');
+  row.innerHTML = '';
+  const lo = filterPart.startSeason;
+  const hi = Math.min(filterPart.endSeason, currentSeasonNumber);
+  for (let k = lo; k <= hi; k++) {
+    const btn = document.createElement('button');
+    btn.className = 'season-btn' + (k === viewingSeason ? ' active' : '');
+    btn.textContent = 'Season ' + k;
+    btn.onclick = () => loadSeason(k);
+    row.appendChild(btn);
+  }
+  // Seasons beyond current (or outside the selected part) are simply not rendered as buttons
+  // at all -- there is nothing for a student to click, since the server would reject the
+  // request anyway.
+}
+
+async function bootstrap() {
+  setupCanvas();
+  await loadCurrentParticipant();
+  const overview = await callEdgeFunction('get-parts-overview', { instanceId: INSTANCE_ID });
+  currentSeasonNumber = overview.currentSeasonNumber;
+  partsData = overview;
+  filterPart = partContaining(currentSeasonNumber) || partsData.parts[partsData.parts.length - 1];
+  renderPartRow();
+  loadSeason(currentSeasonNumber);
+}
+
+// ==== Auth: email + 6-digit code sign-in (no clickable link -- immune to institutional email
+// security scanners that "pre-click" links and burn the one-time token before a real user can). ====
+let pendingLoginEmail = '';
+
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const email = document.getElementById('loginEmail').value.trim();
+  const statusEl = document.getElementById('loginStatus');
+  if (!email) { statusEl.textContent = 'Enter your email first.'; return; }
+  statusEl.textContent = 'Sending...';
+  const { error } = await supabaseClient.auth.signInWithOtp({ email });
+  if (error) {
+    statusEl.textContent = 'Error: ' + error.message;
+    return;
+  }
+  pendingLoginEmail = email;
+  statusEl.textContent = 'Code sent. Check your email.';
+  document.getElementById('loginStep1').style.display = 'none';
+  document.getElementById('loginStep2').style.display = 'block';
+});
+
+document.getElementById('verifyBtn').addEventListener('click', async () => {
+  const code = document.getElementById('loginCode').value.trim();
+  const statusEl = document.getElementById('loginStatus');
+  if (!code) { statusEl.textContent = 'Enter the code from your email first.'; return; }
+  statusEl.textContent = 'Verifying...';
+  const { error } = await supabaseClient.auth.verifyOtp({ email: pendingLoginEmail, token: code, type: 'email' });
+  if (error) statusEl.textContent = 'Error: ' + error.message;
+  // On success, onAuthStateChange below fires automatically and shows the app.
+});
+
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appRoot').style.display = 'block';
+    bootstrap().catch((err) => alert('Could not load the game: ' + err.message));
+  } else {
+    document.getElementById('loginScreen').style.display = 'block';
+    document.getElementById('appRoot').style.display = 'none';
+  }
+});
+</script>
+</div>
+</body>
+</html>
