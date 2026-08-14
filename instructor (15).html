@@ -1,0 +1,1672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Burgerville — Instructor</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --muted: #666;
+    --border: #ddd;
+    --bg: #fafafa;
+    --accent: #2d5a3d;
+    --accent-hover: #1f4029;
+    --error: #b3261e;
+    --error-bg: #fdecea;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 36px 32px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .card.wide { max-width: 640px; }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 14px;
+    margin: 0 0 28px;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  input[type="email"], input[type="text"], select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 15px;
+    margin-bottom: 16px;
+    background: #fff;
+    font-family: inherit;
+  }
+  input[type="text"].code-input {
+    letter-spacing: 4px;
+    font-size: 20px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  button {
+    width: 100%;
+    padding: 11px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { background: #aaa; cursor: not-allowed; }
+  button.secondary {
+    background: none;
+    color: var(--accent);
+    font-weight: 500;
+    padding: 8px;
+    width: auto;
+  }
+  button.secondary:hover { background: none; text-decoration: underline; }
+  .error {
+    background: var(--error-bg);
+    color: var(--error);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .hint {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 14px;
+    text-align: center;
+  }
+  .row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+  .signed-in-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .signed-in-bar .who { font-size: 14px; color: var(--muted); }
+  .signed-in-bar button { width: auto; padding: 7px 14px; font-size: 13px; }
+  .placeholder-box {
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .instance-list { list-style: none; padding: 0; margin: 0; }
+  .instance-list li {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .instance-list li:last-child { border-bottom: none; }
+  .spinner-text { color: var(--muted); font-size: 14px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div id="app" class="card">
+  <div class="spinner-text">Loading…</div>
+</div>
+
+<script>
+// ============================================================================
+// Burgerville — Instructor Login
+//
+// Deployed as its own page (instructor.html), separate from the student app
+// (Burgerville.html), for two reasons:
+//   1. Requested directly: instructor login should not conflict with the
+//      student interface.
+//   2. Supabase's JS client stores its auth session in localStorage, keyed
+//      per ORIGIN, not per page. Since both pages will be served from the
+//      same GitHub Pages origin, they need a distinct `storageKey` below --
+//      otherwise signing in here would silently sign you into the student
+//      session too (and vice versa). This is the fix for that, not an
+//      optional nicety.
+//
+// This page currently handles: OTP login, and the role-gate that checks for
+// an `instructors` profile row. The registration form (for instructors
+// signing in for the first time) and the real dashboard are placeholders
+// here -- they're Step 3 and beyond in the build sequence. Look for
+// "STEP 3" / "STEP 4+" comments below for where those will plug in.
+// ============================================================================
+
+const app = document.getElementById('app');
+let pendingEmail = null; // set once an OTP has been requested, used when verifying the code
+
+function render(html, wide) {
+  app.className = 'card' + (wide ? ' wide' : '');
+  app.innerHTML = html;
+}
+
+// This is the anon (public) key from the same Supabase project already used
+// in Burgerville.html -- safe to embed directly in client-side code by
+// design; it's not the service_role key.
+const SUPABASE_URL = 'https://oxhojojzwvnfzsfpybyf.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94aG9qb2p6d3ZuZnpzZnB5YnlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2OTQzNTksImV4cCI6MjEwMDI3MDM1OX0.USn_IYs5LUBi8xk0kzR85l-miSiMH8U0soms7QzZpmk';
+
+// Everything below is wrapped in error handling on purpose: without it, any
+// startup failure (unreplaced placeholders above, the CDN script failing to
+// load, a network problem) fails silently and the page just sits on the
+// static "Loading…" markup forever, with nothing in the UI to diagnose it.
+function showStartupError(message, detail) {
+  app.innerHTML = `
+    <h1>Couldn't start</h1>
+    <div class="error">${message}</div>
+    ${detail ? `<p class="hint" style="text-align:left;">${detail}</p>` : ''}
+  `;
+}
+
+let supabaseClient;
+try {
+  if (SUPABASE_URL === 'PASTE_FROM_BURGERVILLE_HTML' || SUPABASE_ANON_KEY === 'PASTE_FROM_BURGERVILLE_HTML') {
+    throw new Error('SUPABASE_URL / SUPABASE_ANON_KEY placeholders were never replaced.');
+  }
+  if (typeof window.supabase === 'undefined') {
+    throw new Error('The Supabase JS library did not load from the CDN.');
+  }
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      storageKey: 'burgerville-instructor-auth' // <-- the isolation fix described above
+    }
+  });
+} catch (err) {
+  showStartupError(
+    'This page failed to initialize.',
+    `Technical detail: ${err.message}. Check that SUPABASE_URL and SUPABASE_ANON_KEY near the top of the &lt;script&gt; block have been replaced with the real values from Burgerville.html, and that this is the latest deployed version of the file (try a hard refresh: Cmd+Shift+R).`
+  );
+  throw err; // still surface it in the console for full detail
+}
+
+// ---------------------------------------------------------------------------
+// Screen: enter email
+// ---------------------------------------------------------------------------
+function showEmailScreen(errorMsg) {
+  render(`
+    <h1>Instructor Sign In</h1>
+    <p class="subtitle">Burgerville instructor dashboard</p>
+    ${errorMsg ? `<div class="error">${errorMsg}</div>` : ''}
+    <form id="emailForm">
+      <label for="email">Email address</label>
+      <input type="email" id="email" required autocomplete="email" placeholder="you@university.edu">
+      <button type="submit" id="sendCodeBtn">Send login code</button>
+    </form>
+    <p class="hint">You'll receive a sign-in code by email. No password needed.</p>
+  `);
+
+  document.getElementById('emailForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    const btn = document.getElementById('sendCodeBtn');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+
+    // shouldCreateUser: true -- unlike the student roster (which is
+    // pre-provisioned server-side, see Section 5 of the spec, specifically
+    // to avoid sending any email at upload time), an instructor's account
+    // doesn't exist ahead of time. Their first OTP request is what creates
+    // it. This is still a typed code, not a clickable link, so it doesn't
+    // reintroduce the university-scanner problem that affected magic links.
+    const { error } = await supabaseClient.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true }
+    });
+
+    if (error) {
+      showEmailScreen(error.message);
+      return;
+    }
+    pendingEmail = email;
+    showCodeScreen();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Screen: enter code
+// Code length is a Supabase project setting (GOTRUE_MAILER_OTP_LENGTH), not
+// a fixed 6 -- this project uses 8. Nothing here assumes a specific length;
+// the input just accepts digits up to a generous upper bound (12).
+// ---------------------------------------------------------------------------
+function showCodeScreen(errorMsg) {
+  render(`
+    <h1>Enter your code</h1>
+    <p class="subtitle">Sent to ${pendingEmail}</p>
+    ${errorMsg ? `<div class="error">${errorMsg}</div>` : ''}
+    <form id="codeForm">
+      <label for="code">Code from your email</label>
+      <input type="text" id="code" class="code-input" inputmode="numeric" pattern="[0-9]*"
+             maxlength="12" required autocomplete="one-time-code" placeholder="Code from your email">
+      <button type="submit" id="verifyBtn">Verify & sign in</button>
+    </form>
+    <div class="row">
+      <button type="button" class="secondary" id="resendBtn">Resend code</button>
+      <button type="button" class="secondary" id="backBtn">Use a different email</button>
+    </div>
+  `);
+
+  document.getElementById('codeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = document.getElementById('code').value.trim();
+    const btn = document.getElementById('verifyBtn');
+    btn.disabled = true;
+    btn.textContent = 'Verifying…';
+
+    const { error } = await supabaseClient.auth.verifyOtp({
+      email: pendingEmail,
+      token: code,
+      type: 'email'
+    });
+
+    if (error) {
+      showCodeScreen(error.message);
+      return;
+    }
+    await routeAfterAuth();
+  });
+
+  document.getElementById('resendBtn').addEventListener('click', async () => {
+    await supabaseClient.auth.signInWithOtp({ email: pendingEmail, options: { shouldCreateUser: true } });
+    showCodeScreen('A new code has been sent.');
+  });
+
+  document.getElementById('backBtn').addEventListener('click', () => {
+    pendingEmail = null;
+    showEmailScreen();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Screen: registration -- first-time setup (profile + first class), or
+// "+ New Class" for a returning instructor (class fields only, reusing the
+// same form and the same slug-generation logic).
+// ---------------------------------------------------------------------------
+function slugify(classIdentifier, semester, academicYear) {
+  const classPart = (classIdentifier || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const semesterPart = (semester || '').toLowerCase();
+  const yearPart = (academicYear || '').toString().slice(-2);
+  if (!classPart || !semesterPart || !yearPart) return '';
+  return `${classPart}-${semesterPart}${yearPart}`; // matches the existing eco112-fall26 convention
+}
+
+function showRegistrationScreen(user, existingProfile) {
+  const isNewClassOnly = !!existingProfile;
+  const defaultYear = new Date().getFullYear();
+
+  render(`
+    ${isNewClassOnly ? `
+      <div class="signed-in-bar">
+        <span class="who">Signed in as ${existingProfile.name} (${existingProfile.email})</span>
+        <button id="signOutBtn">Sign out</button>
+      </div>
+    ` : ''}
+    <h1>${isNewClassOnly ? 'New Class' : "Welcome — let's get set up"}</h1>
+    <p class="subtitle">${isNewClassOnly ? 'Add another class to your account.' : 'Your profile, then your first class.'}</p>
+    <div class="error" id="formError" style="display:none;"></div>
+    <form id="registrationForm">
+      ${isNewClassOnly ? '' : `
+        <label for="instructorName">Your name</label>
+        <input type="text" id="instructorName" required placeholder="Jane Smith">
+
+        <label for="institution">Institution</label>
+        <input type="text" id="institution" required placeholder="West Chester University">
+      `}
+
+      <label for="semester">Semester</label>
+      <select id="semester" required>
+        <option value="">Select…</option>
+        <option value="Fall">Fall</option>
+        <option value="Spring">Spring</option>
+        <option value="Summer">Summer</option>
+        <option value="Other">Other</option>
+      </select>
+
+      <label for="academicYear">Academic year</label>
+      <input type="text" id="academicYear" required inputmode="numeric" placeholder="${defaultYear}" value="${defaultYear}">
+
+      <label for="classIdentifier">Class identifier</label>
+      <input type="text" id="classIdentifier" required placeholder="ECO112">
+
+      <label for="section">Class section</label>
+      <input type="text" id="section" required placeholder="001">
+
+      <label for="instanceId">Class ID (auto-filled from the fields above — edit if you'd like)</label>
+      <input type="text" id="instanceId" required placeholder="eco112-fall26">
+
+      <button type="submit" id="submitBtn">${isNewClassOnly ? 'Create class' : 'Finish setup'}</button>
+    </form>
+  `, true);
+
+  // Auto-generate the Class ID as the fields above are filled in, but stop
+  // overwriting it the moment the instructor edits it directly -- it's a
+  // stable, human-visible identifier used elsewhere, so they should be able
+  // to override it, not just have it dictated to them.
+  let slugManuallyEdited = false;
+  const instanceIdField = document.getElementById('instanceId');
+  instanceIdField.addEventListener('input', () => { slugManuallyEdited = true; });
+
+  function refreshSlug() {
+    if (slugManuallyEdited) return;
+    const generated = slugify(
+      document.getElementById('classIdentifier').value,
+      document.getElementById('semester').value,
+      document.getElementById('academicYear').value
+    );
+    if (generated) instanceIdField.value = generated;
+  }
+  ['classIdentifier', 'semester', 'academicYear'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('input', refreshSlug);
+    el.addEventListener('change', refreshSlug);
+  });
+
+  if (isNewClassOnly) {
+    document.getElementById('signOutBtn').addEventListener('click', signOut);
+  }
+
+  document.getElementById('registrationForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('formError');
+    errorBox.style.display = 'none';
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+
+    function fail(message) {
+      errorBox.textContent = message;
+      errorBox.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.textContent = isNewClassOnly ? 'Create class' : 'Finish setup';
+    }
+
+    // Step 1: create the instructor profile -- skipped entirely for the
+    // "+ New Class" path, since existingProfile means this already happened.
+    if (!isNewClassOnly) {
+      const { error: profileError } = await supabaseClient.from('instructors').insert({
+        id: user.id,
+        name: document.getElementById('instructorName').value.trim(),
+        email: user.email,
+        institution: document.getElementById('institution').value.trim()
+      });
+      if (profileError) { fail(`Couldn't save your profile: ${profileError.message}`); return; }
+    }
+
+    // Step 2: create the class (instances row). `name` isn't a field in this
+    // form -- it wasn't one of the requested inputs -- so it's derived from
+    // class identifier + section for display elsewhere in the app.
+    const semester = document.getElementById('semester').value;
+    const academicYear = document.getElementById('academicYear').value.trim();
+    const classIdentifier = document.getElementById('classIdentifier').value.trim();
+    const section = document.getElementById('section').value.trim();
+    const instanceId = document.getElementById('instanceId').value.trim();
+
+    const { error: instanceError } = await supabaseClient.from('instances').insert({
+      id: instanceId,
+      name: `${classIdentifier.toUpperCase()} — Section ${section}`,
+      owner_id: user.id,
+      semester,
+      academic_year: academicYear,
+      class_identifier: classIdentifier,
+      section
+    });
+
+    if (instanceError) {
+      // A duplicate Class ID is the one failure an instructor can actually
+      // fix themselves (edit the field, resubmit), so it earns a clearer
+      // message than the raw constraint-violation text.
+      const isDuplicate = (instanceError.message || '').toLowerCase().includes('duplicate');
+      fail(isDuplicate
+        ? `"${instanceId}" is already in use as a Class ID. Edit that field to something unique and try again.`
+        : `Couldn't create the class: ${instanceError.message}`);
+      return;
+    }
+
+    // Re-fetch the profile fresh so this works correctly whether we just
+    // created it (first-time path) or it already existed ("+ New Class" path).
+    const { data: profile } = await supabaseClient
+      .from('instructors').select('*').eq('id', user.id).single();
+    await showDashboardScreen(user, profile);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Screen: signed in, profile exists (dashboard placeholder)
+// ---------------------------------------------------------------------------
+async function showDashboardScreen(user, profile) {
+  const { data: instances, error } = await supabaseClient
+    .from('instances')
+    .select('id, name, semester, academic_year, class_identifier, section')
+    .eq('owner_id', profile.id)
+    .order('created_at', { ascending: false });
+
+  const instanceListHtml = (instances && instances.length)
+    ? `<ul class="instance-list">${instances.map(i => `
+        <li style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <span>${i.class_identifier || i.id} — ${i.name}
+          ${i.semester ? `(${i.semester} ${i.academic_year || ''})` : ''}
+          ${i.section ? `, Section ${i.section}` : ''}</span>
+          <span style="white-space:nowrap; display:inline-flex; gap:6px; align-items:center;">
+            <span class="run-season-status" data-instance-id="${i.id}" style="font-size:12px; color:#888;"></span>
+            <button class="secondary run-season-btn" data-instance-id="${i.id}"
+                    style="width:auto; padding:5px 12px; font-size:13px;">Run Season →</button>
+            <button class="secondary manage-roster-btn" data-instance-id="${i.id}"
+                    style="width:auto; padding:5px 12px; font-size:13px;">Manage Roster →</button>
+            <button class="secondary configure-seasons-btn" data-instance-id="${i.id}"
+                    style="width:auto; padding:5px 12px; font-size:13px;">Configure Seasons →</button>
+          </span>
+        </li>
+      `).join('')}</ul>`
+    : `<div class="placeholder-box">No classes yet — use "+ New Class" below to create your first one.</div>`;
+
+  render(`
+    <div class="signed-in-bar">
+      <span class="who">Signed in as ${profile.name} (${profile.email})</span>
+      <button id="signOutBtn">Sign out</button>
+    </div>
+    <h1>${profile.institution}</h1>
+    <p class="subtitle">Your classes</p>
+    ${error ? `<div class="error">Couldn't load classes: ${error.message}</div>` : instanceListHtml}
+    <button id="newClassBtn" style="margin-top:16px; width:auto; padding:9px 18px;">+ New Class</button>
+  `, true);
+  document.getElementById('signOutBtn').addEventListener('click', signOut);
+  document.getElementById('newClassBtn').addEventListener('click', () => showRegistrationScreen(user, profile));
+  document.querySelectorAll('.manage-roster-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const instance = instances.find(i => i.id === btn.dataset.instanceId);
+      showRosterScreen(user, profile, instance);
+    });
+  });
+  document.querySelectorAll('.configure-seasons-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const instance = instances.find(i => i.id === btn.dataset.instanceId);
+      showSeasonsScreen(user, profile, instance);
+    });
+  });
+  document.querySelectorAll('.run-season-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const instance = instances.find(i => i.id === btn.dataset.instanceId);
+      const statusEl = document.querySelector(`.run-season-status[data-instance-id="${instance.id}"]`);
+      // Confirmed once, explicitly -- this scores every student's submission for whatever
+      // season is currently pending and advances the class, exactly like the equivalent
+      // curl command on the engine side always required a deliberate, considered action
+      // rather than a casual click.
+      const confirmed = confirm(
+        `Run the current season for "${instance.class_identifier || instance.id}"?\n\n` +
+        `This scores every submitted prediction for whichever season is currently pending ` +
+        `and advances the class to the next one. This cannot be undone from here.`
+      );
+      if (!confirmed) return;
+
+      btn.disabled = true;
+      const originalLabel = btn.textContent;
+      btn.textContent = 'Running…';
+      statusEl.textContent = '';
+      statusEl.style.color = '#888';
+
+      try {
+        const result = await callRunCurrentSeason(instance.id);
+        statusEl.style.color = '#2a7a2a';
+        statusEl.textContent = `Season ${result.season} scored (${result.studentsScored} student${result.studentsScored === 1 ? '' : 's'})` +
+          (result.longRunAdjustmentApplied ? ' — long-run adjustment applied' : '') + '.';
+      } catch (err) {
+        statusEl.style.color = '#b33';
+        statusEl.textContent = `Failed: ${err.message}`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+      }
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Screen: roster management for one class -- current roster, single-add,
+// and bulk CSV upload. Both add paths go through the same Edge Function
+// (bulk-upload-roster), which is what actually solves the "students need to
+// sign in once before they can be rostered" problem: it pre-creates their
+// auth account server-side (no email sent -- see the function's own
+// comments) rather than requiring that first-login step.
+// ---------------------------------------------------------------------------
+async function fetchRoster(instanceId) {
+  const { data, error } = await supabaseClient
+    .from('participants')
+    .select('id, email, screen_name, team_brand')
+    .eq('instance_id', instanceId)
+    .order('screen_name', { ascending: true });
+  return { data: data || [], error };
+}
+
+async function fetchTeams(instanceId) {
+  const { data } = await supabaseClient.from('teams').select('team_brand').eq('instance_id', instanceId);
+  return data || [];
+}
+
+function renderRosterTable(roster) {
+  if (!roster || roster.length === 0) {
+    return `<div class="placeholder-box">No students on the roster yet.</div>`;
+  }
+  return `
+    <table style="width:100%; border-collapse:collapse; font-size:14px;">
+      <thead><tr style="text-align:left; border-bottom:1px solid var(--border);">
+        <th style="padding:6px 4px;">Screen name</th><th style="padding:6px 4px;">Team</th><th style="padding:6px 4px;">Email</th>
+      </tr></thead>
+      <tbody>
+        ${roster.map(p => `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:6px 4px;">${p.screen_name || ''}</td>
+          <td style="padding:6px 4px;">${p.team_brand || ''}</td>
+          <td style="padding:6px 4px; color:var(--muted);">${p.email || ''}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderUploadSummary(results, summary) {
+  const parts = [];
+  if (summary.created) parts.push(`${summary.created} added`);
+  if (summary.updated) parts.push(`${summary.updated} updated`);
+  if (summary.errors) parts.push(`${summary.errors} error${summary.errors === 1 ? '' : 's'}`);
+  const headline = parts.length ? parts.join(', ') : 'Nothing to report';
+  const teamNote = summary.teamsCreated
+    ? `<p class="hint" style="text-align:left;">${summary.teamsCreated} new team${summary.teamsCreated === 1 ? '' : 's'} created automatically.</p>`
+    : '';
+
+  const rowsHtml = results.map(r => `
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:6px 4px;">${r.email}</td>
+      <td style="padding:6px 4px; color:${r.status === 'error' ? 'var(--error)' : 'var(--muted)'};">${r.status === 'error' ? r.reason : r.status}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <p style="font-weight:600;">${headline}</p>
+    ${teamNote}
+    <table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:8px;">
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  `;
+}
+
+// Calls the bulk-upload-roster Edge Function with the caller's OWN access
+// token (not the anon key) -- the function uses it to identify who's asking
+// and confirm they own the target instance before doing any privileged work.
+async function callBulkUploadFunction(instanceId, rows) {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) throw new Error('Your session has expired -- please sign in again.');
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/bulk-upload-roster`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ instanceId, rows })
+  });
+
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+  return body;
+}
+
+// Same pattern as callBulkUploadFunction/callCloneSeasonTemplate: the instructor's own
+// access token identifies them to the function, which verifies instance ownership itself
+// before doing anything -- see run-current-season/index.ts's own comments.
+async function callRunCurrentSeason(instanceId) {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) throw new Error('Your session has expired -- please sign in again.');
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/run-current-season`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ instanceId })
+  });
+
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+  return body;
+}
+
+// Minimal RFC4180-ish CSV parser: handles quoted fields (embedded commas,
+// escaped "" quotes) and matches columns by header name rather than
+// position, so column order -- or an extra "Student ID" column from an LMS
+// export -- doesn't break the upload.
+function parseCsvRows(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  const chars = text.replace(/\r\n/g, '\n');
+
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (chars[i + 1] === '"') { field += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        field += c;
+      }
+    } else {
+      if (c === '"') { inQuotes = true; }
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else { field += c; }
+    }
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  return rows.filter(r => !(r.length === 1 && r[0] === ''));
+}
+
+function parseRosterCsv(text) {
+  const rows = parseCsvRows(text);
+  if (rows.length < 2) throw new Error('CSV appears to be empty (need a header row plus at least one student).');
+
+  const header = rows[0].map(h => h.trim().toLowerCase().replace(/[\s_]/g, ''));
+  const findCol = (aliases) => header.findIndex(h => aliases.includes(h));
+  const emailIdx = findCol(['email']);
+  const nameIdx = findCol(['screenname', 'name']);
+  const teamIdx = findCol(['team', 'teambrand']);
+
+  if (emailIdx === -1 || nameIdx === -1 || teamIdx === -1) {
+    throw new Error('CSV must have columns for email, screen_name, and team (in any order). Found: ' + rows[0].join(', '));
+  }
+
+  return rows.slice(1)
+    .filter(r => r.some(cell => cell.trim() !== ''))
+    .map(r => ({
+      email: (r[emailIdx] || '').trim(),
+      screen_name: (r[nameIdx] || '').trim(),
+      team: (r[teamIdx] || '').trim()
+    }));
+}
+
+async function showRosterScreen(user, profile, instance) {
+  const { data: roster } = await fetchRoster(instance.id);
+  const teams = await fetchTeams(instance.id);
+
+  render(`
+    <div class="signed-in-bar">
+      <span class="who">Signed in as ${profile.name} (${profile.email})</span>
+      <button id="signOutBtn">Sign out</button>
+    </div>
+    <button id="backToDashboardBtn" class="secondary" style="padding:0 0 12px; display:block;">← Back to your classes</button>
+    <h1>${instance.class_identifier || instance.id}</h1>
+    <p class="subtitle">${instance.name} — Roster</p>
+
+    <div id="rosterTableWrap">${renderRosterTable(roster)}</div>
+
+    <h1 style="font-size:16px; margin-top:28px;">Add a single student</h1>
+    <div class="error" id="addError" style="display:none;"></div>
+    <form id="addStudentForm" class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap;">
+      <div style="flex:2; min-width:160px;">
+        <label for="addEmail">Email</label>
+        <input type="email" id="addEmail" required>
+      </div>
+      <div style="flex:2; min-width:140px;">
+        <label for="addScreenName">Screen name</label>
+        <input type="text" id="addScreenName" required>
+      </div>
+      <div style="flex:1; min-width:100px;">
+        <label for="addTeam">Team</label>
+        <input type="text" id="addTeam" required list="teamOptions">
+        <datalist id="teamOptions">${teams.map(t => `<option value="${t.team_brand}">`).join('')}</datalist>
+      </div>
+      <button type="submit" id="addStudentBtn" style="width:auto; padding:10px 18px; margin-bottom:16px;">Add</button>
+    </form>
+
+    <h1 style="font-size:16px; margin-top:12px;">Bulk upload (CSV)</h1>
+    <p class="hint" style="text-align:left; margin-top:0;">
+      Columns: <code>email, screen_name, team</code> (any order, header row required).
+      A team that doesn't exist yet for this class is created automatically.
+    </p>
+    <input type="file" id="csvFile" accept=".csv,text/csv">
+    <button id="uploadCsvBtn" style="margin-top:12px;">Upload CSV</button>
+    <div class="error" id="uploadError" style="display:none;"></div>
+    <div id="uploadSummary" style="margin-top:16px;"></div>
+  `, true);
+
+  document.getElementById('signOutBtn').addEventListener('click', signOut);
+  document.getElementById('backToDashboardBtn').addEventListener('click', () => showDashboardScreen(user, profile));
+
+  async function refreshRosterTable() {
+    const { data: freshRoster } = await fetchRoster(instance.id);
+    document.getElementById('rosterTableWrap').innerHTML = renderRosterTable(freshRoster);
+  }
+
+  document.getElementById('addStudentForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('addError');
+    errorBox.style.display = 'none';
+    const btn = document.getElementById('addStudentBtn');
+    btn.disabled = true;
+    btn.textContent = 'Adding…';
+
+    const row = {
+      email: document.getElementById('addEmail').value.trim(),
+      screen_name: document.getElementById('addScreenName').value.trim(),
+      team: document.getElementById('addTeam').value.trim()
+    };
+
+    try {
+      const { results } = await callBulkUploadFunction(instance.id, [row]);
+      const result = results[0];
+      if (result.status === 'error') {
+        errorBox.textContent = result.reason;
+        errorBox.style.display = 'block';
+      } else {
+        document.getElementById('addStudentForm').reset();
+        await refreshRosterTable();
+      }
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.style.display = 'block';
+    }
+    btn.disabled = false;
+    btn.textContent = 'Add';
+  });
+
+  document.getElementById('uploadCsvBtn').addEventListener('click', async () => {
+    const fileInput = document.getElementById('csvFile');
+    const errorBox = document.getElementById('uploadError');
+    errorBox.style.display = 'none';
+    document.getElementById('uploadSummary').innerHTML = '';
+
+    if (!fileInput.files || fileInput.files.length === 0) {
+      errorBox.textContent = 'Choose a CSV file first.';
+      errorBox.style.display = 'block';
+      return;
+    }
+
+    const btn = document.getElementById('uploadCsvBtn');
+    btn.disabled = true;
+    btn.textContent = 'Uploading…';
+
+    try {
+      const text = await fileInput.files[0].text();
+      const parsedRows = parseRosterCsv(text); // throws with a clear message on bad/missing headers
+      const { results, summary } = await callBulkUploadFunction(instance.id, parsedRows);
+      document.getElementById('uploadSummary').innerHTML = renderUploadSummary(results, summary);
+      await refreshRosterTable();
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.style.display = 'block';
+    }
+    btn.disabled = false;
+    btn.textContent = 'Upload CSV';
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Screen: season configuration for one class. If no seasons exist yet, the
+// only option is cloning from an existing validated instance (see the
+// clone-season-template function's comments for why cloning, not
+// hardcoded defaults, is the source of truth here). Once seasons exist,
+// this shows the list with a per-season edit form.
+//
+// The equilibrium preview/guardrail (see showSeasonEditScreen, below) calls
+// the real shared engine code, ported directly from _shared/Engine.ts --
+// verified byte-for-byte behaviorally identical to the source before being
+// wired in, not reconstructed from a guess at its exports. Basic
+// client-side sanity checks (validateSeasonFields, below) remain in place
+// as a first-pass floor underneath it.
+// ---------------------------------------------------------------------------
+const PART_LABELS = {
+  I: 'Part I -- Market Dynamics',
+  II: 'Part II -- Perfect Competition',
+  IIIProfit: 'Part III -- Unregulated Monopoly',
+  IIIRegulation: 'Part III -- Regulated Monopoly',
+};
+
+// ---------------------------------------------------------------------------
+// Equilibrium preview / guardrail -- ported directly from _shared/Engine.ts
+// (handed off in full, not reconstructed from fragments -- see the instructor
+// handoff doc, Section 2). Kept byte-for-byte equivalent to the real
+// server-side logic; if Engine.ts ever changes, this needs to change with it.
+// toEngineParams matches the exact mapping already used identically in
+// run-current-season, get-market-info, and repair-equilibrium-history.
+// ---------------------------------------------------------------------------
+function toEngineParams(row) {
+  return {
+    Q_0: Number(row.q_0), dQ_dP: Number(row.dq_dp), A_tech: Number(row.a_tech),
+    Alpha_land: Number(row.alpha_land), Beta_cattle: Number(row.beta_cattle),
+    Other_land: Number(row.other_land), calf_price: Number(row.calf_price),
+    land_rent: Number(row.land_rent), interest: Number(row.interest) || 0,
+    endowment: Number(row.endowment), Imports: Number(row.imports) || 0,
+    Tax: Number(row.tax) || 0, Subsidy: Number(row.subsidy) || 0
+  };
+}
+
+function marketDemand(price, seasonParams) {
+  const buyerPrice = price + (seasonParams.Tax || 0) - (seasonParams.Subsidy || 0);
+  return Math.max(0, seasonParams.Q_0 - seasonParams.dQ_dP * buyerPrice);
+}
+
+function firmSupply(price, land, seasonParams) {
+  if (price <= 0) return 0;
+  const A = seasonParams.A_tech, alpha = seasonParams.Alpha_land, beta = seasonParams.Beta_cattle;
+  const base = Math.pow(A * Math.pow(land, alpha), 1 / beta) * price * beta / seasonParams.calf_price;
+  if (base <= 0) return 0;
+  return Math.pow(base, 1 / beta - 1);
+}
+
+function marketSupply(price, firmCount, Qclass, seasonParams) {
+  const Qclass_ = Qclass || 0;
+  const Imports = seasonParams.Imports || 0;
+  if (price <= 0) return Qclass_ + Imports;
+  return firmSupply(price, seasonParams.Other_land, seasonParams) * firmCount + Qclass_ + Imports;
+}
+
+function solveEquilibrium(seasonParams, firmCount, Qclass) {
+  Qclass = Qclass || 0;
+  function excessDemand(price) {
+    return marketDemand(price, seasonParams) - marketSupply(price, firmCount, Qclass, seasonParams);
+  }
+
+  let lo = 0;
+  let hi = seasonParams.Q_0 / seasonParams.dQ_dP;
+  if (hi <= 0) hi = 1;
+
+  let hiExcess = excessDemand(hi);
+  let guard = 0;
+  while (hiExcess > 0 && guard < 60) {
+    hi *= 2;
+    hiExcess = excessDemand(hi);
+    guard++;
+  }
+
+  const loExcess = excessDemand(lo);
+  if (loExcess < 0) {
+    return { price: 0, quantity: marketDemand(0, seasonParams) };
+  }
+
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2;
+    const e = excessDemand(mid);
+    if (Math.abs(e) < 1) { lo = mid; hi = mid; break; }
+    if (e > 0) lo = mid; else hi = mid;
+  }
+
+  const price = (lo + hi) / 2;
+  const quantity = marketDemand(price, seasonParams);
+  return { price, quantity };
+}
+
+// NOT part of Engine.ts -- a guardrail-specific interpretation of solveEquilibrium's own
+// output, kept as a clearly separate function so the port above stays exactly, byte-for-byte
+// identical to the real source. "Degenerate" here means the market effectively isn't
+// clearing at any meaningful positive price -- Engine.ts's own comment describes this exact
+// case as "demand already below supply at price 0."
+function isDegenerateEquilibrium(eq) {
+  return eq.price <= 0.01 || eq.quantity <= 0;
+}
+
+function averageTotalCost(quantity, land, seasonParams) {
+  if (quantity <= 0) return Infinity;
+  const A = seasonParams.A_tech, alpha = seasonParams.Alpha_land, beta = seasonParams.Beta_cattle;
+  const cattle = Math.pow(quantity / (A * Math.pow(land, alpha)), 1 / beta);
+  const TFC = land * seasonParams.land_rent * (1 + (seasonParams.interest || 0));
+  const TVC = cattle * seasonParams.calf_price;
+  return (TFC + TVC) / quantity;
+}
+
+function findMinATC(seasonParams) {
+  const land = seasonParams.Other_land;
+  let lo = 1, hi = 1e15;
+  for (let i = 0; i < 200; i++) {
+    const m1 = lo + (hi - lo) / 3;
+    const m2 = hi - (hi - lo) / 3;
+    if (averageTotalCost(m1, land, seasonParams) < averageTotalCost(m2, land, seasonParams)) hi = m2; else lo = m1;
+  }
+  const qMin = (lo + hi) / 2;
+  return { qMin, atcMin: averageTotalCost(qMin, land, seasonParams) };
+}
+
+function applyLongRunAdjustment(seasonParams) {
+  const minATC = findMinATC(seasonParams);
+  const LRMC = minATC.atcMin;
+  const Imports = seasonParams.Imports || 0;
+  const Q_long_run = Math.max(0, marketDemand(LRMC, seasonParams) - Imports);
+  const newFirmCount = Q_long_run / minATC.qMin;
+  return { LRMC, qMin: minATC.qMin, Q_long_run, newFirmCount };
+}
+
+
+async function fetchSeasons(instanceId) {
+  const { data, error } = await supabaseClient
+    .from('season_parameters')
+    .select('*')
+    .eq('instance_id', instanceId)
+    .order('season_number', { ascending: true });
+  return { data: data || [], error };
+}
+
+async function callCloneSeasonTemplate(instanceId, sourceInstanceId) {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) throw new Error('Your session has expired -- please sign in again.');
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/clone-season-template`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instanceId, sourceInstanceId })
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+  return body;
+}
+
+function toDatetimeLocalValue(isoString) {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Basic, non-engine sanity checks -- catches obviously broken input (a
+// positive elasticity, a missing deadline) without knowing anything about
+// how the numbers combine into an actual equilibrium. Not a substitute for
+// the real preview/guardrail described above, just a floor under it.
+function validateSeasonFields(f) {
+  const errors = [];
+  if (!f.season_name || !f.season_name.trim()) errors.push('Season name is required.');
+  if (!f.part) errors.push('Part is required.');
+  if (!f.deadline || isNaN(new Date(f.deadline).getTime())) errors.push('A valid deadline is required.');
+  if (!(f.q_0 > 0)) errors.push('Q₀ (base demand) must be a positive number.');
+  if (!(f.dq_dp > 0)) errors.push('dQ/dP (demand slope) must be positive -- in this engine\'s formula (quantity = Q_0 - dQ/dP × price), a positive value is what produces a correctly downward-sloping demand curve. This is the opposite sign convention from a typical dP/dQ slope -- confirmed against the real, validated season data before fixing this check.');
+  if (!(f.a_tech > 0)) errors.push('Technology (A) must be a positive number.');
+  if (!(f.alpha_land > 0)) errors.push('Land share (alpha) must be a positive number.');
+  if (!(f.beta_cattle > 0)) errors.push('Cattle share (beta) must be a positive number.');
+  if (!(f.other_land >= 0)) errors.push('Other land must be zero or a positive number.');
+  if (!(f.calf_price >= 0)) errors.push('Calf price must be zero or a positive number.');
+  if (!(f.land_rent >= 0)) errors.push('Land rent must be zero or a positive number.');
+  if (!(f.endowment > 0)) errors.push('Endowment must be a positive number.');
+  if (isNaN(f.interest)) errors.push('Interest rate must be a number.');
+  if (isNaN(f.imports) || f.imports < 0) errors.push('Imports must be zero or a positive number.');
+  if (isNaN(f.tax) || f.tax < 0) errors.push('Tax must be zero or a positive number.');
+  if (isNaN(f.subsidy) || f.subsidy < 0) errors.push('Subsidy must be zero or a positive number.');
+  return errors;
+}
+
+function renderSeasonsTable(seasons) {
+  return `
+    <table style="width:100%; border-collapse:collapse; font-size:14px;">
+      <thead><tr style="text-align:left; border-bottom:1px solid var(--border);">
+        <th style="padding:6px 4px;">#</th><th style="padding:6px 4px;">Name</th>
+        <th style="padding:6px 4px;">Part</th><th style="padding:6px 4px;">Deadline</th>
+        <th style="padding:6px 4px;"></th>
+      </tr></thead>
+      <tbody>
+        ${seasons.map(s => `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:6px 4px;">${s.season_number}</td>
+          <td style="padding:6px 4px;">${s.season_name || ''}</td>
+          <td style="padding:6px 4px; color:var(--muted);">${PART_LABELS[s.part] || s.part}</td>
+          <td style="padding:6px 4px; color:var(--muted);">${s.deadline ? new Date(s.deadline).toLocaleDateString() : '—'}</td>
+          <td style="padding:6px 4px; text-align:right;">
+            <button class="secondary edit-season-btn" data-season-number="${s.season_number}"
+                    style="width:auto; padding:4px 10px; font-size:13px;">Edit</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function showSeasonsScreen(user, profile, instance) {
+  const { data: seasons, error } = await fetchSeasons(instance.id);
+
+  if (error) {
+    render(`
+      <div class="signed-in-bar"><span class="who">Signed in as ${profile.name} (${profile.email})</span>
+        <button id="signOutBtn">Sign out</button></div>
+      <div class="error">Couldn't load seasons: ${error.message}</div>
+    `, true);
+    document.getElementById('signOutBtn').addEventListener('click', signOut);
+    return;
+  }
+
+  if (seasons.length === 0) {
+    render(`
+      <div class="signed-in-bar"><span class="who">Signed in as ${profile.name} (${profile.email})</span>
+        <button id="signOutBtn">Sign out</button></div>
+      <button id="backToDashboardBtn" class="secondary" style="padding:0 0 12px; display:block;">← Back to your classes</button>
+      <h1>${instance.class_identifier || instance.id}</h1>
+      <p class="subtitle">${instance.name} — Seasons</p>
+      <div class="placeholder-box">
+        This class has no seasons configured yet.
+      </div>
+      <label for="sourceInstanceId" style="margin-top:20px;">Clone starting seasons from</label>
+      <input type="text" id="sourceInstanceId" value="test-run-vf26">
+      <p class="hint" style="text-align:left; margin-top:0;">
+        Copies all seasons and the starting number-of-firms from an existing class, with a small
+        automatic variation applied so this class's numbers differ slightly from the source.
+        Every field stays editable afterward.
+      </p>
+      <div class="error" id="cloneError" style="display:none;"></div>
+      <button id="cloneBtn">Clone Seasons</button>
+    `, true);
+
+    document.getElementById('signOutBtn').addEventListener('click', signOut);
+    document.getElementById('backToDashboardBtn').addEventListener('click', () => showDashboardScreen(user, profile));
+    document.getElementById('cloneBtn').addEventListener('click', async () => {
+      const errorBox = document.getElementById('cloneError');
+      errorBox.style.display = 'none';
+      const btn = document.getElementById('cloneBtn');
+      btn.disabled = true;
+      btn.textContent = 'Cloning…';
+      try {
+        await callCloneSeasonTemplate(instance.id, document.getElementById('sourceInstanceId').value.trim());
+        await showSeasonsScreen(user, profile, instance);
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Clone Seasons';
+      }
+    });
+    return;
+  }
+
+  render(`
+    <div class="signed-in-bar"><span class="who">Signed in as ${profile.name} (${profile.email})</span>
+      <button id="signOutBtn">Sign out</button></div>
+    <button id="backToDashboardBtn" class="secondary" style="padding:0 0 12px; display:block;">← Back to your classes</button>
+    <h1>${instance.class_identifier || instance.id}</h1>
+    <p class="subtitle">${instance.name} — Seasons</p>
+    ${renderSeasonsTable(seasons)}
+  `, true);
+
+  document.getElementById('signOutBtn').addEventListener('click', signOut);
+  document.getElementById('backToDashboardBtn').addEventListener('click', () => showDashboardScreen(user, profile));
+  document.querySelectorAll('.edit-season-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const season = seasons.find(s => String(s.season_number) === btn.dataset.seasonNumber);
+      showSeasonEditScreen(user, profile, instance, season);
+    });
+  });
+}
+
+async function showSeasonEditScreen(user, profile, instance, season) {
+  const { data: previousSeasonRow } = await supabaseClient
+    .from('season_parameters').select('*')
+    .eq('instance_id', instance.id).eq('season_number', season.season_number - 1)
+    .maybeSingle();
+  const { data: nextSeasonRow } = await supabaseClient
+    .from('season_parameters').select('*')
+    .eq('instance_id', instance.id).eq('season_number', season.season_number + 1)
+    .maybeSingle();
+
+  render(`
+    <div class="signed-in-bar"><span class="who">Signed in as ${profile.name} (${profile.email})</span>
+      <button id="signOutBtn">Sign out</button></div>
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:0 0 12px; flex-wrap:wrap; gap:8px;">
+      <button id="backToSeasonsBtn" class="secondary" style="width:auto; padding:6px 14px; font-size:13px;">← Back to seasons</button>
+      <div style="display:flex; gap:8px;">
+        ${previousSeasonRow ? `<button id="prevSeasonBtn" class="secondary" style="width:auto; padding:6px 14px; font-size:13px;">← Previous season (${previousSeasonRow.season_number})</button>` : ''}
+        ${nextSeasonRow ? `<button id="nextSeasonBtn" class="secondary" style="width:auto; padding:6px 14px; font-size:13px;">Next season (${nextSeasonRow.season_number}) →</button>` : ''}
+      </div>
+    </div>
+    <h1>Season ${season.season_number}${season.season_name ? ': ' + season.season_name : ''}</h1>
+    <p class="subtitle">${instance.class_identifier || instance.id}</p>
+    <div class="error" id="editError" style="display:none;"></div>
+    <form id="seasonEditForm" style="max-width:720px;">
+      <label for="part">Part</label>
+      <select id="part">
+        ${Object.entries(PART_LABELS).map(([val, label]) =>
+          `<option value="${val}" ${season.part === val ? 'selected' : ''}>${label}</option>`).join('')}
+      </select>
+
+      <label for="deadline">Deadline</label>
+      <input type="datetime-local" id="deadline" value="${toDatetimeLocalValue(season.deadline)}">
+
+      <div id="equilibriumPreview" style="padding:12px 14px; border-radius:8px; margin-bottom:16px; margin-top:16px; font-size:14px; background:#f7f7f7; border:1px solid var(--border);">
+        Computing preview…
+      </div>
+
+      <h1 style="font-size:15px; margin-top:8px;">Demand &amp; policy</h1>
+      <div class="row" style="gap:12px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:130px;">
+          <label for="q_0">Q₀ (base demand)</label>
+          <input type="text" id="q_0" value="${season.q_0}" disabled style="background:#f0f0f0; color:var(--muted);">
+        </div>
+        ${previousSeasonRow ? `
+        <div style="flex:1; min-width:150px;">
+          <label for="demand_shift">Demand shift from Season ${previousSeasonRow.season_number} (B lb.)</label>
+          <input type="text" id="demand_shift" value="${(((season.q_0 ?? 0) - previousSeasonRow.q_0) / 1e9).toFixed(2)}">
+        </div>` : ''}
+        <div style="flex:1; min-width:130px;"><label for="dq_dp">dQ/dP (slope)</label><input type="text" id="dq_dp" value="${season.dq_dp}"></div>
+        <div style="flex:1; min-width:150px;">
+          <label for="imports">Imports (supply shift, B lb.)</label>
+          <input type="text" id="imports" value="${(((season.imports ?? 0)) / 1e9).toFixed(2)}">
+        </div>
+        <div style="flex:1; min-width:130px;"><label for="tax">Tax</label><input type="text" id="tax" value="${season.tax ?? 0}"></div>
+        <div style="flex:1; min-width:130px;"><label for="subsidy">Subsidy</label><input type="text" id="subsidy" value="${season.subsidy ?? 0}"></div>
+      </div>
+      <p class="hint" style="text-align:left; margin-top:2px;">
+        ${previousSeasonRow
+          ? `Q₀ is computed from the previous season's own value plus the shift entered above -- enter the shift directly (e.g. "4" for a 4 billion pound increase) and write the matching shock description below; the two now stay tied together instead of Q₀ silently including a change the text doesn't mention. Imports is entered the same way, in billions of pounds.`
+          : `Q₀ for the first season is a randomly-set starting point (established when this class was cloned) -- not directly editable here yet. Imports is entered in billions of pounds, same units as the demand shift field on later seasons.`}
+      </p>
+
+      <div id="partILockNotice" style="display:none; padding:10px 12px; border-radius:8px; margin-bottom:10px; background:#fff8e6; border:1px solid #e0c060; font-size:13px; color:#7a5c00;">
+        Production and cost variables are locked for Part I (Market Dynamics) -- students at
+        this stage don't yet have access to the firm model, so changes here would be
+        impossible for them to predict. These unlock once the season's Part is set to Perfect
+        Competition or Monopoly.
+      </div>
+
+      <h1 style="font-size:15px; margin-top:8px;">Costs</h1>
+      <div class="row" style="gap:12px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:130px;"><label for="calf_price">Calf price</label><input type="text" id="calf_price" value="${season.calf_price}"></div>
+        <div style="flex:1; min-width:130px;"><label for="land_rent">Land rent</label><input type="text" id="land_rent" value="${season.land_rent}"></div>
+      </div>
+
+      <h1 style="font-size:15px; margin-top:8px;">Market structure</h1>
+      <p class="hint" style="text-align:left; margin-top:0;">
+        These describe the underlying production technology and don't normally vary season to
+        season -- check the box below to apply changes to every season in this class at once.
+      </p>
+      <div class="row" style="gap:12px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:110px;"><label for="a_tech">Technology (A)</label><input type="text" id="a_tech" value="${season.a_tech}"></div>
+        <div style="flex:1; min-width:110px;"><label for="alpha_land">Land share (α)</label><input type="text" id="alpha_land" value="${season.alpha_land}"></div>
+        <div style="flex:1; min-width:110px;"><label for="beta_cattle">Cattle share (β)</label><input type="text" id="beta_cattle" value="${season.beta_cattle}"></div>
+        <div style="flex:1; min-width:110px;"><label for="other_land">Other land</label><input type="text" id="other_land" value="${season.other_land}"></div>
+        <div style="flex:1; min-width:110px;"><label for="interest">Interest rate</label><input type="text" id="interest" value="${season.interest ?? 0}"></div>
+        <div style="flex:1; min-width:110px;"><label for="endowment">Endowment</label><input type="text" id="endowment" value="${season.endowment}"></div>
+      </div>
+      <label style="display:flex; align-items:center; gap:8px; font-weight:400; margin-top:4px;">
+        <input type="checkbox" id="applyToAll" style="width:auto; margin:0;">
+        Apply Technology / Land share / Cattle share / Other land / Interest / Endowment to ALL seasons in this class
+      </label>
+
+      <label style="display:flex; align-items:center; gap:8px; font-weight:400; margin-top:16px;">
+        <input type="checkbox" id="long_run_on" style="width:auto; margin:0;" ${season.long_run_on ? 'checked' : ''}>
+        Long-run adjustment (entry/exit) is active this season
+      </label>
+      <label style="display:flex; align-items:center; gap:8px; font-weight:400; margin-top:8px;">
+        <input type="checkbox" id="show_predicted_equilibrium" style="width:auto; margin:0;" ${season.show_predicted_equilibrium ? 'checked' : ''}>
+        Show the predicted equilibrium to students for this season
+      </label>
+      ${nextSeasonRow ? `
+      <label style="display:flex; align-items:center; gap:8px; font-weight:400; margin-top:8px;">
+        <input type="checkbox" id="rollForward" style="width:auto; margin:0;">
+        Roll this change forward into every later season (keeps each later season's own shock the same size -- e.g. a "+4 billion" season stays +4 billion even if this one moved)
+      </label>` : ''}
+
+      <div id="seasonComparisonPanel" style="margin-top:20px;"></div>
+
+      <label for="season_name" style="margin-top:20px; display:block;">Season name</label>
+      <p class="hint" style="text-align:left; margin-top:0;">
+        A brief description of the dynamic this season -- e.g. "Demand increases" or "Tax
+        introduced" -- shown in the seasons list, distinct from the fuller shock description
+        below that students actually read.
+      </p>
+      <input type="text" id="season_name" value="${season.season_name || ''}">
+
+      <label for="shock_description" style="margin-top:20px; display:block;">Shock description (shown to students)</label>
+      <p class="hint" style="text-align:left; margin-top:0;">
+        Write a message that accurately describes the change shown in the table above --
+        students see only this text, not the underlying numbers, so it needs to independently
+        match what actually happened this season (e.g. if the table shows a +4 billion demand
+        shift, the message should say 4 billion, not some other figure left over from an
+        earlier edit).
+      </p>
+      <textarea id="shock_description" rows="3" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:6px; font-size:15px; margin-bottom:16px; font-family:inherit;">${season.shock_description || ''}</textarea>
+
+      <button type="submit" id="saveSeasonBtn" style="margin-top:4px;">Save</button>
+    </form>
+  `, true);
+
+  document.getElementById('signOutBtn').addEventListener('click', signOut);
+  document.getElementById('backToSeasonsBtn').addEventListener('click', () => showSeasonsScreen(user, profile, instance));
+  if (previousSeasonRow) {
+    document.getElementById('prevSeasonBtn').addEventListener('click', () => showSeasonEditScreen(user, profile, instance, previousSeasonRow));
+  }
+  if (nextSeasonRow) {
+    document.getElementById('nextSeasonBtn').addEventListener('click', () => showSeasonEditScreen(user, profile, instance, nextSeasonRow));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Field locking for Part I (Market Dynamics). Students at this stage have no
+  // access to the firm model, so production/cost variables would be
+  // impossible for them to predict -- these are locked until the season's own
+  // Part is set to Perfect Competition or Monopoly. Responds to the Part
+  // dropdown LIVE (not just the season's initial part on load), since an
+  // instructor could change a season's Part while editing it.
+  // ---------------------------------------------------------------------------
+  const lockedForPartI = ['calf_price', 'land_rent', 'a_tech', 'alpha_land', 'beta_cattle', 'other_land', 'interest', 'endowment'];
+  function updateFieldLocking() {
+    const isPartI = document.getElementById('part').value === 'I';
+    lockedForPartI.forEach(id => {
+      const el = document.getElementById(id);
+      el.disabled = isPartI;
+      el.style.background = isPartI ? '#f0f0f0' : '';
+      el.style.color = isPartI ? 'var(--muted)' : '';
+    });
+    document.getElementById('applyToAll').disabled = isPartI;
+    document.getElementById('partILockNotice').style.display = isPartI ? 'block' : 'none';
+  }
+  document.getElementById('part').addEventListener('change', () => { updateFieldLocking(); renderPreview(); });
+  updateFieldLocking();
+
+  // ---------------------------------------------------------------------------
+  // Equilibrium preview / guardrail. Uses the CURRENT game_state.num_other_firms
+  // as the firm count -- the best available estimate of what will actually be
+  // active when this season runs; a season sequence with multiple long-run
+  // adjustments before this one could shift that in reality, but a full
+  // simulation of the whole season chain is well beyond what a save-time
+  // preview needs to do.
+  // ---------------------------------------------------------------------------
+  const { data: gameStateRow } = await supabaseClient
+    .from('game_state').select('num_other_firms').eq('instance_id', instance.id).maybeSingle();
+  const currentFirmCount = gameStateRow ? Number(gameStateRow.num_other_firms) : null;
+
+  const previewFieldIds = ['q_0', 'dq_dp', 'imports', 'tax', 'subsidy', 'calf_price', 'land_rent',
+    'a_tech', 'alpha_land', 'beta_cattle', 'other_land', 'interest'];
+
+  function readPreviewParams() {
+    const num = (id) => parseFloat(document.getElementById(id).value);
+    const raw = {
+      q_0: num('q_0'), dq_dp: num('dq_dp'), imports: num('imports') * 1e9, tax: num('tax'), subsidy: num('subsidy'),
+      calf_price: num('calf_price'), land_rent: num('land_rent'), a_tech: num('a_tech'),
+      alpha_land: num('alpha_land'), beta_cattle: num('beta_cattle'), other_land: num('other_land'),
+      interest: num('interest'), endowment: 1, // unused by solveEquilibrium; toEngineParams needs the key present
+    };
+    // Guard against mid-typing states (a field momentarily empty/NaN while being retyped, or
+    // a slope of exactly 0) rather than letting solveEquilibrium hang or divide by zero on
+    // input that was never meant to be evaluated in the first place.
+    const values = Object.values(raw);
+    if (values.some(v => isNaN(v))) return null;
+    if (raw.dq_dp <= 0) return null;
+    if (raw.a_tech <= 0 || raw.alpha_land <= 0 || raw.beta_cattle <= 0 || raw.calf_price < 0) return null;
+    return toEngineParams(raw);
+  }
+
+  function renderPreview() {
+    const previewEl = document.getElementById('equilibriumPreview');
+    if (currentFirmCount === null) {
+      previewEl.style.background = '#f7f7f7'; previewEl.style.borderColor = 'var(--border)';
+      previewEl.innerHTML = `<strong>Preview unavailable</strong> -- couldn't read this class's current firm count.`;
+      return;
+    }
+    const params = readPreviewParams();
+    if (!params) {
+      previewEl.style.background = '#f7f7f7'; previewEl.style.borderColor = 'var(--border)';
+      previewEl.innerHTML = `<strong>Preview:</strong> waiting for valid demand/cost values…`;
+      return;
+    }
+
+    const eq = solveEquilibrium(params, currentFirmCount, 0);
+    const degenerate = isDegenerateEquilibrium(eq);
+    const fmtMoney = (x) => '$' + x.toFixed(2);
+    const fmtQty = (x) => (x / 1e9).toFixed(2) + ' B lb.';
+
+    // solveEquilibrium's own "price" is the price SUPPLY responds to directly (marketSupply
+    // uses it unmodified) -- i.e. what sellers receive. marketDemand internally computes
+    // buyerPrice = price + Tax - Subsidy and uses THAT for the demand side -- i.e. what
+    // buyers actually pay. Per Engine.ts and the spec's own P_buyer = P_seller + Tax -
+    // Subsidy, these only coincide when there's no tax or subsidy; whenever either is
+    // nonzero they need to be shown and labeled separately, not as one undifferentiated
+    // "price".
+    const buyerPrice = eq.price + (params.Tax || 0) - (params.Subsidy || 0);
+    const hasWedge = Math.abs(buyerPrice - eq.price) > 0.001;
+
+    let priceText;
+    if (!hasWedge) {
+      priceText = `price ${fmtMoney(eq.price)}`;
+    } else {
+      const parts = [];
+      if (params.Tax) parts.push(`a $${params.Tax.toFixed(2)} tax`);
+      if (params.Subsidy) parts.push(`a $${params.Subsidy.toFixed(2)} subsidy`);
+      priceText = `sellers receive ${fmtMoney(eq.price)}; buyers pay ${fmtMoney(buyerPrice)} (${parts.join(' and ')})`;
+    }
+
+    let html = `<strong>This season would produce:</strong> ${priceText}, quantity ${fmtQty(eq.quantity)} (at the class's current firm count, ${currentFirmCount.toLocaleString()})`;
+
+    if (document.getElementById('long_run_on').checked) {
+      const lr = applyLongRunAdjustment(params);
+      html += `<br><strong>Long-run adjustment:</strong> firm count would move to ${Math.round(lr.newFirmCount).toLocaleString()} (from ${currentFirmCount.toLocaleString()}), at a long-run price of ${fmtMoney(lr.LRMC)}.`;
+    }
+
+    if (degenerate) {
+      previewEl.style.background = '#fdecea'; previewEl.style.borderColor = '#e07a6f';
+      html = `⚠ <strong>This produces a degenerate market</strong> -- price and/or quantity are at or near zero, meaning demand and supply aren't meaningfully meeting. Double-check these values before saving.<br>` + html;
+    } else {
+      previewEl.style.background = '#f0f7f0'; previewEl.style.borderColor = '#8fbf8f';
+    }
+    previewEl.innerHTML = html;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Season-to-season comparison panel. Directly addresses a real gap: the form
+  // only ever shows a season's own ABSOLUTE values (e.g. Q_0 = 38,000,000,000),
+  // with nothing connecting that number to a shock description like "demand
+  // will increase by 4 billion pounds" -- the 4B is already baked into the
+  // 38B, invisibly. This shows the previous season's own values alongside
+  // whatever's currently typed, with the delta made the visually prominent
+  // thing (not the absolute value), specifically so a mismatch between the
+  // shock text and the actual numbers is obvious before saving, not after a
+  // student notices it doesn't add up.
+  // ---------------------------------------------------------------------------
+  const comparisonFields = [
+    { id: 'q_0', label: 'Q₀ (base demand)', format: 'billions' },
+    { id: 'dq_dp', label: 'dQ/dP (slope)', format: 'billions' },
+    { id: 'imports', label: 'Imports', format: 'billions', enteredInBillions: true },
+    { id: 'tax', label: 'Tax', format: 'dollars' },
+    { id: 'subsidy', label: 'Subsidy', format: 'dollars' },
+    { id: 'calf_price', label: 'Calf price', format: 'dollars' },
+    { id: 'land_rent', label: 'Land rent', format: 'dollars' },
+    { id: 'a_tech', label: 'Technology (A)', format: 'plain' },
+    { id: 'alpha_land', label: 'Land share (α)', format: 'decimal' },
+    { id: 'beta_cattle', label: 'Cattle share (β)', format: 'decimal' },
+    { id: 'other_land', label: 'Other land', format: 'plain' },
+    { id: 'interest', label: 'Interest rate', format: 'decimal' },
+    { id: 'endowment', label: 'Endowment', format: 'dollars' },
+  ];
+
+  function fmtField(value, format) {
+    if (value === null || value === undefined || isNaN(value)) return '—';
+    if (format === 'billions') return (value / 1e9).toFixed(2) + ' B';
+    if (format === 'dollars') return '$' + value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    if (format === 'decimal') return value.toFixed(2);
+    return value.toLocaleString();
+  }
+
+  function fmtDelta(prev, cur, format) {
+    if (prev === null || prev === undefined || isNaN(prev) || cur === null || cur === undefined || isNaN(cur)) return null;
+    const diff = cur - prev;
+    if (Math.abs(diff) < 1e-9) return { text: 'no change', color: 'var(--muted)' };
+    const sign = diff > 0 ? '+' : '';
+    const text = sign + fmtField(diff, format);
+    return { text, color: diff > 0 ? '#2a7a2a' : '#b33' };
+  }
+
+  function renderComparisonPanel() {
+    const panelEl = document.getElementById('seasonComparisonPanel');
+    if (!previousSeasonRow) {
+      panelEl.innerHTML = `
+        <div style="padding:12px 14px; border-radius:8px; background:#f7f7f7; border:1px solid var(--border); font-size:13px; color:var(--muted);">
+          This is the first season -- no previous season to compare against.
+        </div>`;
+      return;
+    }
+
+    const num = (id) => parseFloat(document.getElementById(id).value);
+    const rows = comparisonFields.map(f => {
+      const prevVal = Number(previousSeasonRow[f.id]);
+      const curVal = f.enteredInBillions ? num(f.id) * 1e9 : num(f.id);
+      const delta = fmtDelta(prevVal, curVal, f.format);
+      const changed = delta && delta.text !== 'no change';
+      return `
+        <tr style="${changed ? 'font-weight:600;' : ''}">
+          <td style="padding:5px 6px; color:var(--muted); font-weight:400;">${f.label}</td>
+          <td style="padding:5px 6px; text-align:right; color:var(--muted); font-weight:400;">${fmtField(prevVal, f.format)}</td>
+          <td style="padding:5px 6px; text-align:right;">${fmtField(curVal, f.format)}</td>
+          <td style="padding:5px 6px; text-align:right; color:${delta ? delta.color : 'var(--muted)'};">${delta ? delta.text : '—'}</td>
+        </tr>`;
+    }).join('');
+
+    panelEl.innerHTML = `
+      <div style="padding:14px; border-radius:8px; background:#fff; border:1px solid var(--border);">
+        <h3 style="font-size:14px; margin:0 0 2px;">vs. Season ${previousSeasonRow.season_number}</h3>
+        <p style="color:var(--muted); font-size:12px; margin:0 0 10px;">
+          Bold rows changed from last season -- cross-check these against the shock description above.
+        </p>
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+          <thead><tr style="border-bottom:1px solid var(--border); text-align:right;">
+            <th style="text-align:left; padding:5px 6px; font-weight:600; font-size:11px; color:var(--muted); text-transform:uppercase;">Field</th>
+            <th style="padding:5px 6px; font-weight:600; font-size:11px; color:var(--muted); text-transform:uppercase;">Season ${previousSeasonRow.season_number}</th>
+            <th style="padding:5px 6px; font-weight:600; font-size:11px; color:var(--muted); text-transform:uppercase;">This season</th>
+            <th style="padding:5px 6px; font-weight:600; font-size:11px; color:var(--muted); text-transform:uppercase;">Δ</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Keep the (now read-only) Q0 display in sync with the editable demand-shift
+  // field. Q0 itself is computed here, not typed directly -- downstream code
+  // (readPreviewParams, renderComparisonPanel, the save handler's own field
+  // reads) keeps reading #q_0's value completely unchanged; only the SOURCE of
+  // that value has moved to the shift field. This is deliberately NOT wired
+  // through previewFieldIds/comparisonFields' existing 'input' listeners on
+  // #q_0 itself, since #q_0 is disabled and will never fire its own input
+  // event -- the shift field's listener explicitly re-renders both instead.
+  // ---------------------------------------------------------------------------
+  function updateQ0FromShift() {
+    if (!previousSeasonRow) return; // season 0: Q0 has no shift field to derive from
+    const shiftBillions = parseFloat(document.getElementById('demand_shift').value);
+    if (isNaN(shiftBillions)) return;
+    document.getElementById('q_0').value = String(previousSeasonRow.q_0 + shiftBillions * 1e9);
+  }
+  if (previousSeasonRow) {
+    document.getElementById('demand_shift').addEventListener('input', () => {
+      updateQ0FromShift();
+      renderPreview();
+      renderComparisonPanel();
+    });
+  }
+  updateQ0FromShift();
+
+  previewFieldIds.forEach(id => document.getElementById(id).addEventListener('input', renderPreview));
+  document.getElementById('long_run_on').addEventListener('change', renderPreview);
+  renderPreview();
+
+  comparisonFields.forEach(f => document.getElementById(f.id).addEventListener('input', renderComparisonPanel));
+  renderComparisonPanel();
+
+  document.getElementById('seasonEditForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('editError');
+    errorBox.style.display = 'none';
+
+    const num = (id) => parseFloat(document.getElementById(id).value);
+    const fields = {
+      season_name: document.getElementById('season_name').value,
+      part: document.getElementById('part').value,
+      deadline: document.getElementById('deadline').value ? new Date(document.getElementById('deadline').value).toISOString() : null,
+      shock_description: document.getElementById('shock_description').value,
+      q_0: num('q_0'), dq_dp: num('dq_dp'), imports: num('imports') * 1e9, tax: num('tax'), subsidy: num('subsidy'),
+      calf_price: num('calf_price'), land_rent: num('land_rent'),
+      a_tech: num('a_tech'), alpha_land: num('alpha_land'), beta_cattle: num('beta_cattle'),
+      other_land: num('other_land'), interest: num('interest'), endowment: num('endowment'),
+      long_run_on: document.getElementById('long_run_on').checked,
+      show_predicted_equilibrium: document.getElementById('show_predicted_equilibrium').checked,
+    };
+
+    const errors = validateSeasonFields(fields);
+    if (errors.length > 0) {
+      errorBox.innerHTML = errors.map(e => `• ${e}`).join('<br>');
+      errorBox.style.display = 'block';
+      return;
+    }
+
+    // Guardrail: a degenerate preview doesn't hard-block saving (there could be a genuine
+    // pedagogical reason to intentionally construct one), but it does require an explicit
+    // acknowledgment rather than silently saving something that produces a broken market for
+    // real students -- same reasoning as the confirmation already required before running a
+    // season.
+    if (currentFirmCount !== null) {
+      const previewParams = readPreviewParams();
+      if (previewParams) {
+        const eq = solveEquilibrium(previewParams, currentFirmCount, 0);
+        if (isDegenerateEquilibrium(eq)) {
+          const proceed = confirm(
+            `These settings produce a degenerate market (price and/or quantity at or near zero).\n\n` +
+            `Save anyway?`
+          );
+          if (!proceed) return;
+        }
+      }
+    }
+
+    // Roll-forward: same underlying principle as the clone-template fix (Section 5's own
+    // comment there) -- a change to one season's ABSOLUTE value should propagate as an
+    // ADDITIVE shift to every later season, preserving each one's own originally-designed
+    // shock size rather than leaving them computed relative to a baseline that no longer
+    // exists. Only the shock-relevant fields roll forward, not production/cost "market
+    // structure" fields -- those already have their own, separate apply-to-all mechanism
+    // (an absolute overwrite, not a delta), since they're meant to be constant, not a shock.
+    const rollForwardFields = ['q_0', 'dq_dp', 'imports', 'tax', 'subsidy', 'calf_price', 'land_rent'];
+    let laterSeasons = [];
+    let deltas = {};
+    if (nextSeasonRow && document.getElementById('rollForward').checked) {
+      rollForwardFields.forEach(id => { deltas[id] = fields[id] - Number(season[id] ?? 0); });
+      const changedFields = rollForwardFields.filter(id => Math.abs(deltas[id]) > 1e-9);
+      if (changedFields.length > 0) {
+        const { data: fetchedLaterSeasons } = await supabaseClient
+          .from('season_parameters').select('*')
+          .eq('instance_id', instance.id).gt('season_number', season.season_number)
+          .order('season_number', { ascending: true });
+        laterSeasons = fetchedLaterSeasons || [];
+
+        if (laterSeasons.length > 0) {
+          const summary = changedFields.map(id => {
+            const sign = deltas[id] > 0 ? '+' : '';
+            return `${id}: ${sign}${deltas[id].toLocaleString()}`;
+          }).join('\n');
+          const proceed = confirm(
+            `This will shift the following fields by the same amount across all ${laterSeasons.length} later season(s) (${laterSeasons[0].season_number}-${laterSeasons[laterSeasons.length - 1].season_number}), preserving each one's own shock size:\n\n${summary}\n\nContinue?`
+          );
+          if (!proceed) return;
+        }
+      }
+    }
+
+    const btn = document.getElementById('saveSeasonBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    const { error: updateError } = await supabaseClient
+      .from('season_parameters').update(fields)
+      .eq('instance_id', instance.id).eq('season_number', season.season_number);
+
+    if (updateError) {
+      errorBox.textContent = updateError.message;
+      errorBox.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Save';
+      return;
+    }
+
+    if (laterSeasons.length > 0) {
+      for (const laterSeason of laterSeasons) {
+        const shiftedFields = {};
+        rollForwardFields.forEach(id => { shiftedFields[id] = Number(laterSeason[id] ?? 0) + deltas[id]; });
+        const { error: rollForwardError } = await supabaseClient
+          .from('season_parameters').update(shiftedFields)
+          .eq('instance_id', instance.id).eq('season_number', laterSeason.season_number);
+        if (rollForwardError) {
+          errorBox.textContent = `Season saved, but rolling forward into Season ${laterSeason.season_number} failed: ${rollForwardError.message}`;
+          errorBox.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Save';
+          return;
+        }
+      }
+    }
+
+    if (document.getElementById('applyToAll').checked) {
+      const structureFields = {
+        a_tech: fields.a_tech, alpha_land: fields.alpha_land, beta_cattle: fields.beta_cattle,
+        other_land: fields.other_land, interest: fields.interest, endowment: fields.endowment,
+      };
+      const { error: bulkError } = await supabaseClient
+        .from('season_parameters').update(structureFields).eq('instance_id', instance.id);
+      if (bulkError) {
+        errorBox.textContent = `Season saved, but applying to all seasons failed: ${bulkError.message}`;
+        errorBox.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Save';
+        return;
+      }
+    }
+
+    if (nextSeasonRow) {
+      const { data: freshNextSeasonRow } = await supabaseClient
+        .from('season_parameters').select('*')
+        .eq('instance_id', instance.id).eq('season_number', nextSeasonRow.season_number)
+        .maybeSingle();
+      await showSeasonEditScreen(user, profile, instance, freshNextSeasonRow || nextSeasonRow);
+    } else {
+      await showSeasonsScreen(user, profile, instance);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Role-gate: after any successful sign-in, decide which screen to show
+// ---------------------------------------------------------------------------
+async function routeAfterAuth() {
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) { showEmailScreen(); return; }
+
+  const { data: profile } = await supabaseClient
+    .from('instructors')
+    .select('*')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (!profile) {
+    showRegistrationScreen(user, null);
+  } else {
+    await showDashboardScreen(user, profile);
+  }
+}
+
+async function signOut() {
+  await supabaseClient.auth.signOut();
+  pendingEmail = null;
+  showEmailScreen();
+}
+
+// ---------------------------------------------------------------------------
+// Entry point: is there already a session for THIS page's storage key?
+// ---------------------------------------------------------------------------
+(async function init() {
+  try {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (session) {
+      await routeAfterAuth();
+    } else {
+      showEmailScreen();
+    }
+  } catch (err) {
+    showStartupError('Something went wrong while checking your session.', `Technical detail: ${err.message}`);
+    throw err;
+  }
+})();
+</script>
+</body>
+</html>
