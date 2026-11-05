@@ -1,0 +1,897 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Clash of Clans · Instructor</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  /* Layout: instructor.html's pattern — games list → game detail with grouped action cards → one screen per task,
+     each with a back link. Same Burgerville tokens as the student app. */
+  html { font-size: 17px; }
+  :root {
+    --bg: #FAF6EE; --panel: #ffffff; --ink: #1a1a2e; --muted: #5a5a72; --border: #e0dbd0;
+    --paper-line: #E4DCC8; --rust: #A6491F; --rust-dark: #7E3517; --sage: #5B7553; --gold: #B98A2E;
+    --new-eq: #1d7a3a; --demand: #b03a2e; --supply: #2563a8;
+    --given-bg: #EAF1F7; --given-border: #b9cfe0; --edit-bg: #EAF6EC; --edit-border: #a9d4ae;
+    --warn-bg: #FBF3E3; --good-bg: #F3F7F1; --bad-bg: #FBEEEC; --tint: #f0ece0;
+    --shadow: 0 4px 24px rgba(26,26,46,0.10); --radius: 12px;
+    --serif: Georgia, "Iowan Old Style", serif;
+    --sans: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; color: var(--ink); font-family: var(--sans);
+    background-color: var(--bg);
+    background-image: linear-gradient(var(--paper-line) 1px, transparent 1px), linear-gradient(90deg, var(--paper-line) 1px, transparent 1px);
+    background-size: 28px 28px;
+    padding-block: 18px 60px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+  .mock-banner { margin-bottom: 12px; font-size: 13px; color: var(--muted); background: var(--panel); border: 1px dashed var(--gold); border-radius: 8px; padding: 8px 12px; }
+  .mock-banner b { color: var(--rust); }
+  .mock-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .mock-nav button { font-size: 12px; padding: 4px 10px; border-radius: 12px; border: 1px solid var(--gold); background: var(--warn-bg); color: var(--ink); cursor: pointer; }
+  .mock-nav button.on { background: var(--gold); color: #fff; }
+
+  header.top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  header.top h1 { font-family: var(--serif); font-size: 26px; margin: 0; }
+  header.top .acct { font-size: 14px; color: var(--muted); }
+  .back { font-size: 14px; color: var(--rust); cursor: pointer; background: none; border: 0; padding: 0; margin-bottom: 6px; }
+  h2.ttl { font-family: var(--serif); font-size: 24px; margin: 0 0 4px; text-wrap: balance; }
+  .lede { color: var(--muted); font-size: 15px; margin: 0 0 16px; }
+
+  .card { background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); padding: 16px 18px; min-width: 0; }
+  .card h3 { font-family: var(--serif); font-size: 1.05rem; margin: 0 0 10px; border-bottom: 1px solid var(--border); padding-bottom: 7px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+  .card h3 .aside { font-family: var(--sans); font-size: 13px; font-weight: 400; color: var(--muted); }
+  .stack { display: flex; flex-direction: column; gap: 16px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 820px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  .note { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+  .btn { font-family: var(--sans); font-size: 15px; font-weight: 700; border-radius: 8px; padding: 9px 18px; cursor: pointer; border: 1.5px solid var(--rust-dark); background: var(--rust); color: #fff; }
+  .btn.secondary { background: var(--panel); color: var(--ink); border-color: var(--ink); font-weight: 600; }
+  .btn.sage { background: var(--sage); border-color: var(--sage); }
+  .btn.small { font-size: 13px; padding: 5px 12px; }
+  .btn.danger { background: var(--panel); color: var(--demand); border-color: var(--demand); }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+  .pill { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 10px; padding: 2px 9px; }
+  .pill.open { background: var(--warn-bg); color: var(--rust); border: 1px solid var(--gold); }
+  .pill.arch { background: #EDE8DA; color: var(--muted); }
+  .pill.on { background: var(--good-bg); color: var(--sage); border: 1px solid var(--sage); }
+  .pill.off { background: #EDE8DA; color: var(--muted); border: 1px solid var(--paper-line); }
+
+  .game-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px dashed var(--paper-line); cursor: pointer; flex-wrap: wrap; }
+  .game-row:hover { background: var(--warn-bg); }
+  .game-row .nm { font-weight: 700; font-size: 16px; }
+  .game-row .meta { font-size: 13px; color: var(--muted); }
+
+  .action { display: flex; flex-direction: column; gap: 8px; }
+  .action .t { font-family: var(--serif); font-weight: 700; font-size: 16px; }
+  .action .d { font-size: 13px; color: var(--muted); flex: 1; }
+  .section-label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); font-weight: 700; margin: 6px 0 -6px; }
+  .progress { height: 8px; background: var(--tint); border-radius: 4px; overflow: hidden; }
+  .progress > div { height: 100%; background: var(--sage); }
+
+  table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.t th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--border); font-weight: 600; white-space: nowrap; }
+  table.t td { padding: 6px 6px; border-bottom: 1px dashed var(--paper-line); font-variant-numeric: tabular-nums; vertical-align: middle; }
+  table.t .num { text-align: right; }
+  table.t tr.flag td { background: var(--bad-bg); }
+  .scroll-x { overflow-x: auto; }
+  .neg { color: var(--demand); } .over { color: var(--demand); font-weight: 700; } .under { color: var(--sage); font-weight: 700; }
+  select, input[type=text], input[type=number], textarea { font-family: var(--sans); font-size: 14px; padding: 6px 8px; border: 1.5px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--ink); max-width: 100%; }
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .field label { font-size: 13px; font-weight: 700; }
+  .field .h { font-size: 12px; color: var(--muted); }
+  .field input { width: 100%; }
+  .field input.edit { background: var(--edit-bg); border-color: var(--edit-border); text-align: right; font-variant-numeric: tabular-nums; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .fields { grid-template-columns: 1fr; } }
+
+  .clan-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  .clan-box { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .clan-box .n { font-weight: 700; }
+  .clan-box .c { font-size: 13px; color: var(--muted); }
+  .clan-box input { width: 100%; margin-top: 6px; }
+
+  .subnav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .subnav button { font-size: 14px; font-weight: 700; padding: 7px 14px; border-radius: 8px; border: 1.5px solid var(--sage); background: var(--good-bg); color: var(--sage); cursor: pointer; }
+  .subnav button.on { background: var(--rust); border-color: var(--rust-dark); color: #fff; }
+
+  .chat-layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+  @media (max-width: 760px) { .chat-layout { grid-template-columns: 1fr; } }
+  .chan { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .chan.on { background: var(--warn-bg); font-weight: 700; }
+  .chan .cnt { font-size: 12px; color: var(--muted); }
+  .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+  .toggle input { width: 16px; height: 16px; }
+  .msg { padding: 8px 0; border-bottom: 1px dashed var(--paper-line); display: flex; gap: 10px; align-items: flex-start; }
+  .msg .body { flex: 1; min-width: 0; font-size: 14px; line-height: 1.45; }
+  .msg .who { font-size: 12px; color: var(--muted); }
+  .msg .who b { color: var(--ink); }
+  .msg.hidden .text { text-decoration: line-through; color: var(--muted); }
+  .msg .acts { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+
+  svg text { font-family: var(--sans); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .vote-mini { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+  .clock { font-variant-numeric: tabular-nums; }
+  .pace-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 560px) { .pace-row { grid-template-columns: 1fr; } }
+  .pace { display: flex; gap: 10px; align-items: flex-start; border: 1.5px solid var(--border); border-radius: 8px; padding: 10px 12px; cursor: pointer; font-size: 14px; }
+  .pace:has(input:checked) { border-color: var(--rust); background: var(--warn-bg); }
+  .unit-row { display: flex; gap: 6px; }
+  .unit-row input { width: 80px; }
+  .small-in { width: 56px; text-align: right; display: inline-block; padding: 3px 6px; }
+  .scale-out { font-size: 14px; background: var(--good-bg); border: 1px solid var(--sage); border-radius: 8px; padding: 8px 12px; }
+  .live-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .big-clock { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--rust); line-height: 1.1; }
+  .live-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .round-dots { display: flex; gap: 6px; flex-wrap: wrap; }
+  .round-dots span { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: var(--tint); color: var(--muted); }
+  .round-dots span.done { background: var(--sage); color: #fff; }
+  .round-dots span.cur { background: var(--rust); color: #fff; }
+  .projector { position: fixed; inset: 0; z-index: 50; background: var(--ink); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+  .projector[hidden] { display: none; }
+  .proj-close { position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); }
+  .proj-round { font-size: 24px; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); }
+  .proj-phase { font-family: var(--serif); font-size: clamp(36px, 7vw, 72px); font-weight: 700; }
+  .proj-clock { font-size: clamp(72px, 18vw, 200px); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+  .proj-sub { font-size: clamp(18px, 2.5vw, 28px); opacity: .85; }
+  .mm-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: center; }
+  @media (max-width: 700px) { .mm-top { grid-template-columns: minmax(0, 1fr); } }
+  .mm-lead { background: var(--ink); color: #fff; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+  .ml-k { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--gold); font-weight: 700; }
+  .ml-v { font-family: var(--serif); font-size: 24px; font-weight: 700; line-height: 1.25; }
+  .ml-n { font-size: 13px; opacity: .8; }
+  .mm-bars { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+  .mrow { display: grid; grid-template-columns: 170px minmax(0, 1fr) 28px; gap: 10px; align-items: center; color: var(--muted); }
+  .mrow.top { color: var(--ink); font-weight: 700; }
+  .mrow .tn { text-align: right; font-variant-numeric: tabular-nums; }
+  .mm-foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .mm-feed { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .fmsg { font-size: 13px; background: var(--tint); border-radius: 8px; padding: 5px 10px; }
+  .proj-mm { margin-top: 18px; font-family: var(--serif); font-size: clamp(22px, 3.2vw, 40px); }
+  .pm-k { font-family: var(--sans); font-size: .5em; text-transform: uppercase; letter-spacing: 2px; color: var(--gold); display: block; }
+  .pm-n { font-family: var(--sans); font-size: .5em; opacity: .7; }
+
+  /* ---------- projector display: a single dark look, built for a classroom screen ---------- */
+  .pres { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: #12121f; color: #f4f1ea; font-family: var(--sans);
+    padding: max(14px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px)); }
+  .pres[hidden] { display: none; }
+  .pres-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-bottom: 10px; border-bottom: 1px solid #2c2c44; }
+  .pt-game { font-size: 15px; color: #a9a6b8; }
+  .pt-round { font-family: var(--serif); font-size: clamp(20px, 2.4vw, 30px); font-weight: 700; }
+  .pt-phase { font-size: 14px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; padding: 6px 14px; border-radius: 20px; background: #2c2c44; color: #E8C26A; }
+  .pres-main { flex: 1; min-height: 0; display: grid; gap: 24px; padding: 18px 0; overflow: auto; align-items: start; }
+  .pres-main.two { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr); }
+  .pres-main.res { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
+  @media (max-width: 900px) { .pres-main.two, .pres-main.res { grid-template-columns: minmax(0, 1fr); } }
+  .pcol { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .p-k { font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #E8C26A; }
+  .p-title { font-family: var(--serif); font-size: clamp(28px, 3.6vw, 52px); font-weight: 700; line-height: 1.1; }
+  .p-news { font-size: clamp(18px, 1.9vw, 26px); line-height: 1.45; background: #1d1d30; border-left: 4px solid #E8C26A; padding: 14px 18px; border-radius: 6px; }
+  .p-note { font-size: clamp(15px, 1.4vw, 19px); color: #c9c5d6; line-height: 1.45; }
+  .p-panel { background: #1b1b2d; border: 1px solid #2c2c44; border-radius: 12px; padding: 14px 16px; min-width: 0; }
+  .p-panel h4 { margin: 0 0 10px; font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #a9a6b8; }
+  .p-clock { font-size: clamp(90px, 15vw, 220px); font-weight: 800; line-height: .95; font-variant-numeric: tabular-nums; letter-spacing: -2px; }
+  .p-clock.low { color: #ff7a66; }
+  .p-clock.up { color: #E8C26A; font-size: clamp(52px, 6.5vw, 116px); white-space: nowrap; }
+  .p-big { font-size: clamp(54px, 7vw, 110px); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .p-sub { font-size: clamp(16px, 1.6vw, 22px); color: #c9c5d6; }
+  .p-stat-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .p-stat { background: #1b1b2d; border: 1px solid #2c2c44; border-radius: 10px; padding: 10px 14px; }
+  .p-stat .k { font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #a9a6b8; }
+  .p-stat .v { font-size: clamp(26px, 2.8vw, 40px); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .p-stat .v.good { color: #8fd18a; } .p-stat .v.bad { color: #ff7a66; }
+  .p-bar { display: grid; grid-template-columns: 130px minmax(0, 1fr) 70px; gap: 12px; align-items: center; font-size: clamp(15px, 1.4vw, 19px); margin: 8px 0; }
+  .p-bar .track { height: 16px; background: #2c2c44; border-radius: 8px; overflow: hidden; }
+  .p-bar .fill { height: 100%; background: #7fa076; border-radius: 8px; transition: width .6s ease; }
+  .p-bar .n { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+  .p-progress { height: 26px; background: #2c2c44; border-radius: 13px; overflow: hidden; }
+  .p-progress > div { height: 100%; background: linear-gradient(90deg, #7fa076, #a9cf9e); transition: width .6s ease; }
+  .p-lb { width: 100%; border-collapse: collapse; font-size: clamp(15px, 1.4vw, 19px); }
+  .p-lb td { padding: 7px 4px; border-bottom: 1px solid #2c2c44; font-variant-numeric: tabular-nums; }
+  .p-lb td.r { text-align: right; } .p-lb td.rk { color: #E8C26A; font-weight: 800; width: 34px; }
+  /* market-message cloud */
+  .cloud { position: relative; min-height: 360px; display: flex; flex-direction: column; gap: 14px; }
+  .phrases { display: flex; flex-direction: column; gap: 4px; }
+  .phrase { font-family: var(--serif); font-weight: 700; line-height: 1.1; color: #8f8ca3; transition: font-size .5s ease, color .5s ease; }
+  .phrase .c { font-family: var(--sans); font-size: .42em; font-weight: 700; color: #a9a6b8; margin-left: 10px; vertical-align: middle; }
+  .phrase.lead { color: #F4D58D; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start; }
+  .chip { font-size: clamp(13px, 1.2vw, 16px); padding: 6px 12px; border-radius: 16px; background: #26263c; border: 1px solid #3a3a58; animation: pop .5s ease; white-space: nowrap; }
+  .chip b { font-weight: 700; }
+  .chip.cut, .chip.cut2 { border-color: #7fa076; } .chip.pat { border-color: #E8C26A; } .chip.up, .chip.up2 { border-color: #ff7a66; }
+  @keyframes pop { from { transform: scale(.4) translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .chip { animation: none; } .p-bar .fill, .p-progress > div, .phrase { transition: none; } }
+  .p-svg { width: 100%; height: auto; display: block; }
+  /* instructor control strip */
+  .pres-ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid #2c2c44; opacity: .55; transition: opacity .2s; }
+  .pres-ctl:hover, .pres-ctl:focus-within { opacity: 1; }
+  .pres-ctl .lbl { font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #8f8ca3; margin-right: 4px; }
+  .pbtn { font-family: var(--sans); font-size: 15px; font-weight: 700; padding: 8px 16px; border-radius: 8px; border: 1.5px solid #4a4a6a; background: #22223a; color: #f4f1ea; cursor: pointer; }
+  .pbtn:hover { border-color: #E8C26A; }
+  .pbtn.go { background: #A6491F; border-color: #c25a2a; }
+  .pbtn:focus-visible { outline: 3px solid #E8C26A; outline-offset: 2px; }
+  .pres-ctl .sp { flex: 1; }
+  .pbtn.mr { border-color: #7ee0c3; color: #7ee0c3; }
+  .pbtn.mr.on { background: #7ee0c3; color: #12121f; }
+  .pres-ctl .hint { font-size: 12px; color: #8f8ca3; }
+  .stepn { display: inline-flex; width: 24px; height: 24px; border-radius: 50%; background: var(--rust); color: #fff; font-family: var(--sans); font-size: 13px; align-items: center; justify-content: center; margin-right: 8px; vertical-align: 2px; }
+  .src-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 14px; }
+  @media (max-width: 700px) { .src-row { grid-template-columns: minmax(0,1fr); } }
+  .src { border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .src-t { font-weight: 700; }
+  .src-ctl { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+  .src-ctl select { max-width: 100%; min-width: 0; flex: 1 1 220px; }
+  .import-ok { margin-top: 12px; font-size: 14px; background: var(--good-bg); border: 1px solid var(--sage); border-radius: 8px; padding: 8px 12px; }
+  .clan-ctl { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .clan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .clan-card { border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .clan-name { font-family: var(--serif); font-weight: 700; font-size: 15px; width: 100%; }
+  .clan-n { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .clan-n.off { color: var(--demand); }
+  .chips-row { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tchip { font-size: 12px; font-weight: 700; background: var(--tint); border-radius: 10px; padding: 2px 8px; }
+  .tchip.solo { background: var(--warn-bg); border: 1px dashed var(--gold); font-weight: 600; }
+  .nt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+  .nt-card { border: 1.5px dashed var(--gold); background: var(--warn-bg); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .nt-h { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  tr.newrow td { background: var(--warn-bg); }
+  .name-bank { display: flex; flex-wrap: wrap; gap: 6px; }
+  .nb { font-size: 13px; border: 1px solid var(--border); border-radius: 12px; padding: 3px 10px; color: var(--muted); }
+  .nb.used { background: var(--good-bg); border-color: var(--sage); color: var(--sage); font-weight: 700; }
+  .formula { font-family: var(--serif); font-size: 16px; background: var(--tint); border-radius: 8px; padding: 10px 14px; overflow-x: auto; }
+
+  .signin { max-width: 460px; margin: 40px auto; }
+  .signin input { width: 100%; font-size: 16px; }
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 70; max-width: min(92vw, 560px); font-size: 15px; background: var(--ink); color: #fff; border-radius: 8px; padding: 10px 16px; box-shadow: var(--shadow); }
+  .linkbtn { font: inherit; font-weight: 700; color: var(--rust); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+  .field input { width: 100%; }
+  .unit-row input { width: 80px; }
+  table.t input[type=text], table.t select { width: 100%; min-width: 110px; }
+  .game-row[data-game] { cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Clash of Clans · Instructor</h1>
+    <div class="acct" id="acct" hidden><span id="acctEmail"></span> · <a href="#" id="signOut" style="color:var(--rust)">Sign out</a></div>
+  </header>
+  <div id="app"></div>
+</div>
+<div class="toast" id="toast" role="alert" hidden></div>
+<script>
+/* Clash of Clans instructor page. Everything goes through owner-checked database functions. */
+const SUPABASE_URL = 'https://oxhojojzwvnfzsfpybyf.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94aG9qb2p6d3ZuZnpzZnB5YnlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2OTQzNTksImV4cCI6MjEwMDI3MDM1OX0.USn_IYs5LUBi8xk0kzR85l-miSiMH8U0soms7QzZpmk';
+// Its own storageKey, so this session never collides with a student or Burgerville session.
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storageKey: 'coc-instructor-auth' } });
+
+const $ = id => document.getElementById(id);
+const app = () => $('app');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const n0 = v => Number(v == null ? 0 : v);
+const fmt = n => Math.round(n).toLocaleString('en-US');
+const money = n => (n < 0 ? '−$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US');
+const price = n => '$' + Number(n).toFixed(2);
+const bil = n => (Math.round(n / 1e8) / 10).toFixed(1);
+const pts = (n, d = 3) => String(Number(Number(n).toFixed(d)));
+const parseNum = s => Number(String(s).replace(/[^0-9.\-]/g, ''));
+const MKT_KEYS = ['cut2', 'cut', 'pat', 'up', 'up2'];
+const CLAN_BANK = ['Iron Grill', 'Patty Kings', 'Smokestack', 'Bun Brigade', 'Brisket Barons', 'Sizzle Syndicate', 'Charcoal Crown', 'Ember Order', 'Cast Iron Guild', 'Mesquite Mob', 'Prime Cut Pact', 'Hickory House', 'Searing Circle', "Butcher's Block", 'Sesame Sovereigns', 'Rib Rack Republic', 'Grillfire Legion', 'Marrow Union', 'Skillet Senate', 'Flame Broil Federation'];
+
+let screen = 'signin', gameId = null, G = null, home = null, pendingEmail = '', clockOffset = 0, pollTimer = null;
+let panelHtml = '', editRound = null, showBench = false, resPane = 'market', resRound = null, RES = null, chatClan = null, editPlayer = null, lastFetchAt = 0, autoRanKey = null;
+
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 6000); }
+async function rpc(name, args) { const { data, error } = await sb.rpc(name, args || {}); if (error) throw error; return data; }
+async function act(name, args, after) {
+  try { const d = await rpc(name, { p_game: gameId, ...(args || {}) }); if (after) await after(d); await loadGame(); return d; }
+  catch (e) { toast(e.message || 'That did not go through. Please try again.'); return undefined; }
+}
+function U() { return G && G.game.pace === 'over_days' ? 'Season' : 'Round'; }
+function u() { return U().toLowerCase(); }
+function clockText(ms) {
+  const t = Math.max(0, Math.ceil(ms / 1000)), d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60), s = t % 60;
+  const p2 = x => String(x).padStart(2, '0');
+  return d ? `${d}d ${h}:${p2(m)}:${p2(s)}` : h ? `${h}:${p2(m)}:${p2(s)}` : `${m}:${p2(s)}`;
+}
+function secsLabel(sec) { return sec % 86400 === 0 ? (sec / 86400) + (sec === 86400 ? ' day' : ' days') : sec % 3600 === 0 ? (sec / 3600) + (sec === 3600 ? ' hour' : ' hours') : sec % 60 === 0 ? (sec / 60) + (sec === 60 ? ' minute' : ' minutes') : sec + ' seconds'; }
+function header(back, title, lede) {
+  return `<div><button class="back" data-nav="${back}" type="button">← ${back === 'games' ? 'All games' : esc(gameTitle())}</button>
+    <h2 class="ttl">${esc(title)}</h2>${lede ? `<p class="lede">${lede}</p>` : ''}</div>`;
+}
+function gameTitle() { return G ? G.game.name + (G.game.session_label ? ' · ' + G.game.session_label : '') : ''; }
+function frozen() { return !!G.game.clans_frozen_at; }
+
+/* ---------- sign-in: the same emailed code as the Burgerville instructor page ---------- */
+function showSignIn(msg) {
+  screen = 'signin'; stopPoll(); $('acct').hidden = true;
+  app().innerHTML = `<div class="card signin"><h3>Instructor sign-in</h3><form id="emailForm" class="stack" style="gap:8px">
+    <label class="note" for="email">Your instructor email</label><input id="email" type="email" autocomplete="email" required>
+    <div><button class="btn" id="sendBtn" type="submit">Send login code</button></div></form>
+    <p class="note" id="signMsg" role="status" style="margin:10px 0 0">${esc(msg || "You'll receive a sign-in code by email.")}</p></div>`;
+  $('emailForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    pendingEmail = $('email').value.trim(); $('sendBtn').disabled = true; $('signMsg').textContent = 'Sending…';
+    const { error } = await sb.auth.signInWithOtp({ email: pendingEmail, options: { shouldCreateUser: false } });
+    if (error) return showSignIn(error.message);
+    showCode();
+  });
+}
+function showCode(msg) {
+  app().innerHTML = `<div class="card signin"><h3>Enter your code</h3><form id="codeForm" class="stack" style="gap:8px">
+    <label class="note" for="code">Code sent to ${esc(pendingEmail)}</label><input id="code" inputmode="numeric" maxlength="12" autocomplete="one-time-code" required>
+    <div><button class="btn" type="submit">Verify and sign in</button> <button class="btn secondary small" type="button" id="backEmail">Use another email</button></div></form>
+    <p class="note" id="signMsg" role="status" style="margin:10px 0 0">${esc(msg || '')}</p></div>`;
+  $('backEmail').onclick = () => showSignIn();
+  $('codeForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    $('signMsg').textContent = 'Verifying…';
+    const { error } = await sb.auth.verifyOtp({ email: pendingEmail, token: $('code').value.trim(), type: 'email' });
+    if (error) showCode(error.message);
+  });
+}
+
+/* ---------- navigation ---------- */
+function stopPoll() { clearInterval(pollTimer); pollTimer = null; }
+function startPoll() {
+  stopPoll();
+  pollTimer = setInterval(() => { if (!document.hidden && gameId && (screen === 'detail' || screen === 'clans' || screen === 'chat')) loadGame().catch(() => {}); }, 2500);
+}
+async function goGames() {
+  screen = 'games'; gameId = null; G = null; stopPoll(); panelHtml = '';
+  home = await rpc('coc_instructor_home');
+  if (!home.is_instructor) {
+    app().innerHTML = `<div class="card signin"><h3>This page is for instructors</h3><p class="sans">This account isn't registered as an instructor. Register on the Burgerville instructor page first.</p></div>`;
+    return;
+  }
+  renderGames();
+}
+async function openGame(id) { gameId = id; panelHtml = ''; screen = 'detail'; await loadGame(); startPoll(); window.scrollTo(0, 0); }
+async function nav(to) {
+  panelHtml = '';
+  if (to === 'games') return goGames();
+  screen = to; window.scrollTo(0, 0);
+  await loadGame();
+}
+async function loadGame() {
+  if (!gameId) return;
+  lastFetchAt = Date.now();
+  G = await rpc('coc_game_state', { p_game: gameId });
+  clockOffset = new Date(G.now).getTime() - Date.now();
+  // Auto-run: this open page runs the round when the firm decision timer ends, if that setting is on.
+  if (G.game.auto_run && G.phase === 'wait' && autoRanKey !== gameId + G.current) { autoRanKey = gameId + G.current; try { await rpc('coc_run_round', { p_game: gameId }); G = await rpc('coc_game_state', { p_game: gameId }); } catch (e) { toast(e.message); } }
+  // Don't redraw over the Start Round 1 box, which holds an F value the instructor may have typed.
+  if ($('startF') && panelHtml) return;
+  await renderScreen();
+}
+async function renderScreen() {
+  $('acct').hidden = false;
+  if (screen === 'detail') renderDetail();
+  else if (screen === 'roster') await renderRoster();
+  else if (screen === 'clans') renderClans();
+  else if (screen === 'seasons') renderRounds();
+  else if (screen === 'results') await renderResults();
+  else if (screen === 'chat') await renderChat();
+  else if (screen === 'settings') renderSettings();
+}
+// A poll must never overwrite a form the instructor is typing in.
+function typing() { const a = document.activeElement; return a && a.matches && a.matches('input[type=text],input:not([type]),textarea,select') && app().contains(a); }
+
+/* ---------- games list ---------- */
+function renderGames() {
+  $('acct').hidden = false;
+  const active = home.games.filter(g => !g.archived), arch = home.games.filter(g => g.archived);
+  const row = g => {
+    const st = g.archived ? ['Archived', 'arch'] : g.ended ? ['Game over', 'on'] : g.current ? [`Round ${g.current} of ${g.rounds}`, 'open'] : g.sign_in_open ? ['Open for sign-in', 'on'] : ['Not started', 'off'];
+    return `<div class="game-row" data-game="${esc(g.id)}"><div><div class="nm">${esc(g.name)}${g.session_label ? ' · ' + esc(g.session_label) : ''}${g.is_test ? ' <span class="pill off">Test</span>' : ''}</div>
+      <div class="meta">${g.signed_in} signed in of ${g.roster} · ${g.teams} teams · ${g.clans} clans${g.linked ? ' · linked' : ''}</div></div><span class="pill ${st[1]}">${st[0]}</span></div>`;
+  };
+  app().innerHTML = `<div class="card"><h3>My games</h3>
+    <form id="newGame" class="clan-ctl"><input id="newName" type="text" placeholder="Game name, such as ECO112 Section 0405" aria-label="New game name" style="flex:1 1 260px">
+      <button class="btn small" type="submit">+ New game</button><button class="btn small secondary" type="button" id="newTest">+ Test game</button></form>
+    <p class="note" style="margin:0 0 8px">A test game comes with 15 simulated classmates and 5-minute timers, and you can delete it.</p>
+    ${active.map(row).join('') || '<p class="note">No games yet.</p>'}
+    ${arch.length ? `<details style="margin-top:10px"><summary class="note" style="cursor:pointer">Archived (${arch.length})</summary>${arch.map(row).join('')}</details>` : ''}</div>`;
+  $('newGame').addEventListener('submit', e => { e.preventDefault(); createGame(false); });
+  $('newTest').onclick = () => createGame(true);
+}
+async function createGame(test) {
+  const nm = $('newName').value.trim() || (test ? 'Test game' : '');
+  if (!nm) return toast('Give the game a name.');
+  try { const id = await rpc('coc_new_game', { p_name: nm, p_test: test }); await openGame(id); }
+  catch (e) { toast(e.message); }
+}
+
+/* ---------- game page ---------- */
+function renderDetail() {
+  const g = G.game, cur = G.current, ph = G.phase, Un = U(), un = u();
+  const roundsDone = (G.rounds_data || []).filter(r => r.ran).length;
+  const finished = !!g.ended_at;
+  const state = !cur || ph === 'ran' ? (finished ? 'over' : 'idle') : ph;
+  const nextN = (cur || 0) + 1;
+  const showN = state === 'idle' ? (cur ? cur : 1) : cur;
+  const nextR = (G.rounds_data || []).find(r => r.number === nextN);
+  const hasMore = nextN <= g.rounds;
+  const pill = { idle: cur ? ['Results shown', 'on'] : ['Ready', 'off'], vote: ['Clan vote', 'open'], firm: ['Firm decision', 'open'], wait: ['Waiting for you to run it', 'open'], over: ['Game over', 'on'] }[state];
+  const cls = g.pace === 'in_class';
+  const addA = cls ? 30 : 3600, addB = cls ? 60 : 86400, labA = cls ? '+30 seconds' : '+1 hour', labB = cls ? '+1 minute' : '+1 day';
+  const vs = nextR ? (nextR.vote_secs || g.vote_secs) : g.vote_secs, fs = nextR ? (nextR.firm_secs || g.firm_secs) : g.firm_secs;
+  let btns = '', detail = '', counts = '', clock = '';
+  if (state === 'idle') {
+    if (hasMore) btns = `<button class="btn" type="button" id="lvStart">Start ${un} ${nextN} →</button>`;
+    detail = (cur ? `Last ${un}: price <b>${price(G.last_market.price)}</b>, ${bil(G.last_market.total_q)} billion lb. ` : '')
+      + (hasMore ? `Starts the clan vote (${secsLabel(vs)}), then the firm decision (${secsLabel(fs)}). ${g.auto_run ? `The ${un} runs on its own when the timer ends.` : `You run the ${un} when the timer ends.`}` : `All ${g.rounds} ${un}s are done.`);
+    if (!cur) detail += ` <b>${G.signed_in} signed in; clans will freeze when you start ${Un} 1.</b>`;
+  }
+  if (state === 'vote') {
+    clock = `<div class="big-clock clock" data-clock="vote"></div>`;
+    detail = `Students vote on their clan's plan. When the timer ends, the firm decision opens on its own.`;
+    counts = `<div><b>${G.voted} of ${G.signed_in}</b> students have voted</div><div class="progress"><div style="width:${G.signed_in ? G.voted / G.signed_in * 100 : 0}%"></div></div>`;
+    btns = `<button class="btn secondary small" type="button" data-add="${addA}">${labA}</button><button class="btn secondary small" type="button" data-add="${addB}">${labB}</button><button class="btn small" type="button" id="lvClose">Close vote now</button>`;
+  }
+  if (state === 'firm' || state === 'wait') {
+    if (state === 'firm') clock = `<div class="big-clock clock" data-clock="firm"></div>`;
+    detail = state === 'firm' ? `Students who voted choose Split or Steal. Anyone who doesn't choose is counted as Split and earns 0 points.` : `The firm decision timer has ended. Add time, or run the ${un} to score it and show results.`;
+    counts = `<div><b>${G.decided} of ${G.voted}</b> voters have made a firm decision</div><div class="progress"><div style="width:${G.voted ? G.decided / G.voted * 100 : 0}%"></div></div>`;
+    btns = `<button class="btn secondary small" type="button" data-add="${addA}">${labA}</button><button class="btn secondary small" type="button" data-add="${addB}">${labB}</button><button class="btn ${state === 'wait' ? '' : 'small'}" type="button" id="lvRun">${state === 'firm' ? `End firm decision and run ${un} ${cur}` : `Run ${un} ${cur} →`}</button>`;
+  }
+  if (state === 'over') detail = `<b>Game over.</b> ${roundsDone} ${un}s played. See Results for the leaderboard and CSV.`;
+  const canUndo = cur && ph === 'ran';
+  const dots = Array.from({ length: g.rounds }, (_, i) => { const r = (G.rounds_data || []).find(x => x.number === i + 1); return `<span class="${r && r.ran ? 'done' : i + 1 === cur && ph !== 'ran' ? 'cur' : ''}">${i + 1}</span>`; }).join('');
+  const lede = `Game ID <b>${esc(g.id)}</b> · ${G.signed_in} signed in of ${G.roster} · ${(G.teams || []).length} teams · ${(G.clans || []).length} clans${G.linked.length ? ' · linked with ' + G.linked.map(l => esc(l.session_label || l.name)).join(', ') : ''} · ${cls ? 'In class' : 'Over days'}: ${g.rounds} ${un}s${g.points_mode === 'scale' ? `, worth ${pts(g.total_points)} points in total` : ''}`;
+  if (typing() && $('liveCard') && document.activeElement.id !== '') return;
+  app().innerHTML = `<section class="screen stack">
+    ${header('games', gameTitle(), lede)}
+    <div class="section-label">${cls ? 'Live round' : 'This season'}</div>
+    <div class="grid2">
+      <div class="card action" id="liveCard">
+        <div class="live-head"><div class="t">${Un} ${showN || 1} of ${g.rounds}</div><span class="pill ${pill[1]}">${pill[0]}</span></div>
+        ${clock}<div class="d">${detail}</div>${counts}
+        <div class="live-btns">${btns}</div>
+        <div class="round-dots">${dots}</div>
+      </div>
+      <div class="card action">
+        <div class="t">Undo the last ${un}</div>
+        <div class="d">Removes the most recent ${un}'s results and reopens it. Votes, firm decisions, clan plans and chat are kept. Available until the next ${un} starts.</div>
+        <div><button class="btn secondary" type="button" id="undoBtn" ${canUndo ? '' : 'disabled'}>Undo ${un}</button> <span class="note">${canUndo ? '' : cur ? `Not available: ${Un} ${cur} hasn't run.` : ''}</span></div>
+      </div>
+    </div>
+    ${panelHtml ? `<div class="card" id="ctlPanel">${panelHtml}</div>` : ''}
+    <div class="section-label">Game length</div>
+    <div class="grid2">
+      <div class="card action"><div class="t">End game now</div><div class="d">Ends the game after the ${un}s already played and re-scores them to keep your total. A ${un} in progress is cancelled and not scored.</div><div><button class="btn secondary" type="button" id="endBtn" ${roundsDone ? '' : 'disabled'}>End game now</button></div></div>
+      <div class="card action"><div class="t">Add one more ${un}</div><div class="d">Copies the last ${un}'s parameters, with the news "No change in demand or costs this round." Reopens a game that has ended. All ${un}s are re-scored to keep your total.</div><div><button class="btn secondary" type="button" id="addBtn">Add one more ${un}</button></div></div>
+    </div>
+    ${g.is_test ? `<div class="section-label">Test tools</div><div class="card action"><div class="t">Simulated classmates</div><div class="d">They send their messages and vote at random, then make random firm decisions. Sign in to the student page as your test student alongside them. Add your test student on the Roster screen.</div>
+      <div class="live-btns"><button class="btn secondary small" type="button" id="botVote" ${state === 'vote' ? '' : 'disabled'}>Classmates message and vote</button><button class="btn secondary small" type="button" id="botDecide" ${state === 'firm' ? '' : 'disabled'}>Classmates decide</button></div></div>` : ''}
+    <div class="section-label">Sessions</div>
+    <div class="card action"><div class="live-head"><div class="t">${g.sign_in_open ? 'Open for sign-in' : 'Closed for sign-in'}</div><span class="pill ${g.sign_in_open ? 'on' : 'off'}">${g.sign_in_open ? 'Open' : 'Closed'}</span></div>
+      <div class="d">Students land in whichever linked game is open, so opening this one closes the others. A student who sent a message or voted in one session sees "You've already played" in the other. A student who only signed in can still play the other session.</div>
+      <div class="live-btns"><button class="btn secondary small" type="button" id="signToggle">${g.sign_in_open ? 'Close for sign-in' : 'Open for sign-in'}</button><button class="btn secondary small" type="button" id="copyBtn">Copy this game</button>
+      ${G.linked.map(l => `<button class="btn secondary small" type="button" data-game="${esc(l.id)}">Go to ${esc(l.session_label || l.name)}</button>`).join('')}</div></div>
+    <div class="section-label">Market messages</div>
+    ${marketPanel()}
+    <div class="section-label">Set up</div>
+    <div class="grid3">
+      ${actionCard('Roster &amp; teams', 'Import from a Burgerville class, or upload the roster and team-names CSVs.', 'roster', 'Manage roster')}
+      ${actionCard('Clans', 'Set the number of clans and which teams belong to each.', 'clans', 'Manage clans')}
+      ${actionCard(cls ? 'Rounds' : 'Seasons', 'Demand, costs, news and any timer overrides.', 'seasons', cls ? 'Configure rounds' : 'Configure seasons')}
+    </div>
+    <div class="section-label">During play</div>
+    <div class="grid3">
+      ${actionCard('Results', 'Market outcome, team leaderboard and the gradebook CSV.', 'results', 'View results')}
+      ${actionCard('Chat', 'Read every clan channel, hide messages, mute players, turn channels on or off.', 'chat', 'Moderate chat')}
+      ${actionCard('Settings', 'Pace, point values, starting plan, vote and steal sizes, market messages.', 'settings', 'Game settings')}
+    </div>
+    <div class="section-label">Danger zone</div>
+    <div class="card action"><div class="t">${g.archived_at ? 'Unarchive game' : 'Archive game'}</div><div class="d">Hides it from your list. Nothing is deleted, and you can unarchive it any time.</div>
+      <div class="live-btns"><button class="btn danger" type="button" id="archBtn">${g.archived_at ? 'Unarchive' : 'Archive'}</button>${g.is_test ? '<button class="btn danger" type="button" id="delBtn">Delete test game</button>' : ''}</div></div>
+  </section>`;
+  const on = (id, f) => { const el = $(id); if (el) el.onclick = f; };
+  on('lvStart', startRoundClick);
+  on('lvClose', () => act('coc_adjust_timer', { p_action: 'close_vote' }));
+  on('lvRun', async () => { try { if (G.phase === 'firm') await rpc('coc_adjust_timer', { p_game: gameId, p_action: 'end_firm' }); } catch (e) { toast(e.message); return; } act('coc_run_round'); });
+  on('undoBtn', () => confirmPanel(`<b>Undo ${U()} ${G.current}?</b> Its results are removed and the ${u()} reopens at "time's up."`, 'Undo', () => act('coc_undo_last_round')));
+  on('endBtn', () => {
+    const mid = G.current && G.phase !== 'ran';
+    confirmPanel(`<b>End the game now?</b> ${mid ? `${U()} ${G.current} is in progress and will be cancelled, not scored.` : `No more ${u()}s will be played.`}`, 'End game', () => act('coc_end_game', null, async p => { panelHtml = `<b>Game ended after ${p} ${u()}s.</b> All ${u()}s were re-scored${G.game.points_mode === 'scale' ? ` to keep the total at ${pts(G.game.total_points)} points` : ''}. Students see a note explaining the change.`; }));
+  });
+  on('addBtn', () => act('coc_add_round', null, async p => { panelHtml = `<b>${U()} ${p} added.</b> It copies the last ${u()}'s parameters, with the news "No change in demand or costs this round." You can edit it under ${U()}s.`; }));
+  on('botVote', () => act('coc_test_bots', { p_action: 'vote' }));
+  on('botDecide', () => act('coc_test_bots', { p_action: 'decide' }));
+  on('signToggle', () => act('coc_set_sign_in', { p_open: !G.game.sign_in_open }));
+  on('copyBtn', () => confirmPanel('<b>Copy this game?</b> The new session has the same roster, rounds and settings, and is linked to this one. Its clans and F are set when it runs.', 'Copy game', async () => {
+    try { const id = await rpc('coc_copy_game', { p_game: gameId }); await openGame(id); toast('New session created. Open it for sign-in when that session begins.'); } catch (e) { toast(e.message); }
+  }));
+  on('archBtn', async () => { await act('coc_set_archived', { p_archived: !G.game.archived_at }); });
+  on('delBtn', () => confirmPanel('<b>Delete this test game?</b> Its simulated classmates and all its data are removed.', 'Delete', async () => { try { await rpc('coc_delete_test_game', { p_game: gameId }); await goGames(); } catch (e) { toast(e.message); } }));
+  tick();
+}
+function actionCard(t, d, to, label) { return `<div class="card action"><div class="t">${t}</div><div class="d">${d}</div><div><button class="btn secondary" data-nav="${to}" type="button">${label}</button></div></div>`; }
+function confirmPanel(html, yes, fn) {
+  panelHtml = `${html}<div class="live-btns" style="margin-top:8px"><button class="btn small" type="button" id="ctlYes">${esc(yes)}</button><button class="btn small secondary" type="button" id="ctlNo">Cancel</button></div>`;
+  confirmPanel.fn = fn; renderDetail();
+  const p = $('ctlPanel'); if (p) p.scrollIntoView({ block: 'center' });
+}
+async function startRoundClick() {
+  if (G.current) return act('coc_start_round');
+  // Round 1 sets F: suggested from attendance, and the instructor can change it.
+  const r1 = (G.rounds_data || []).find(r => r.number === 1), sug = r1 && r1.f != null ? r1.f : G.suggested_f;
+  if (!G.signed_in) return toast('No students have signed in yet.');
+  panelHtml = `<b>Start ${U()} 1?</b> Clans freeze now, and students alone from their team join the new teams. <div class="field" style="margin-top:8px;max-width:360px"><label for="startF">Fixed cost F ($ per player)</label><input class="edit" id="startF" type="text" value="${fmt(sug)}"><span class="h">Suggested: $${fmt(G.game.market_fixed_cost)} ÷ ${G.signed_in} players. It then stays fixed.</span></div>
+    <div class="live-btns" style="margin-top:8px"><button class="btn small" type="button" id="ctlYes">Start ${U()} 1</button><button class="btn small secondary" type="button" id="ctlNo">Cancel</button></div>`;
+  confirmPanel.fn = async () => {
+    const f = parseNum($('startF') ? $('startF').value : sug);
+    await act('coc_start_round', { p_f: f });
+  };
+  renderDetail();
+  const p = $('ctlPanel'); if (p) p.scrollIntoView({ block: 'center' });
+}
+
+function marketPanel() {
+  const msgs = G.game.market_messages, short = k => msgs[k].replace(/^Everyone should /, '');
+  const t = {}; MKT_KEYS.forEach(k => { t[k] = 0; }); (G.clans || []).forEach(c => MKT_KEYS.forEach(k => { t[k] += c.market[k] || 0; }));
+  const sent = MKT_KEYS.reduce((s, k) => s + t[k], 0), top = sent ? MKT_KEYS.slice().sort((a, b) => t[b] - t[a])[0] : null;
+  return `<div class="card" id="mmCard"><div class="mm-top">
+      <div class="mm-lead">${top ? `<span class="ml-k">Most players say</span><span class="ml-v">“${esc(msgs[top])}”</span><span class="ml-n">${t[top]} of ${sent} messages · ${sent} of ${G.signed_in} players have sent one</span>` : `<span class="ml-k">Most players say</span><span class="ml-v">No messages yet</span>`}</div>
+      <div class="mm-bars">${MKT_KEYS.map(k => `<div class="mrow ${k === top ? 'top' : ''}"><span class="ml">${esc(short(k))}</span><div class="progress"><div style="width:${sent ? t[k] / sent * 100 : 0}%;${k === top ? 'background:var(--ink)' : ''}"></div></div><span class="tn">${t[k]}</span></div>`).join('')}</div></div>
+    <div class="scroll-x" style="margin-top:14px"><table class="t"><thead><tr><th>Clan</th>${MKT_KEYS.map(k => `<th class="num" style="white-space:normal">${esc(short(k))}</th>`).join('')}<th class="num">Sent</th></tr></thead>
+      <tbody>${(G.clans || []).map(c => { const tot = MKT_KEYS.reduce((s, k) => s + (c.market[k] || 0), 0), mx = Math.max(...MKT_KEYS.map(k => c.market[k] || 0)); return `<tr><td>${esc(c.name)}</td>${MKT_KEYS.map(k => `<td class="num" style="${c.market[k] && c.market[k] === mx ? 'font-weight:700' : ''}">${c.market[k] || 0}</td>`).join('')}<td class="num" style="white-space:nowrap">${tot} of ${c.signed_in}</td></tr>`; }).join('')}</tbody></table></div>
+    <div class="mm-foot"><span class="note">Players are never named here or on students' screens: each message shows only its clan. Messages close when the clan vote closes.</span></div>
+    <div class="mm-feed">${(G.feed || []).map(f => `<div class="fmsg"><b>${esc(f.clan)}</b> “${esc(msgs[f.message])}”</div>`).join('')}</div></div>`;
+}
+
+/* ---------- roster ---------- */
+let ROSTER = [], importMsg = '';
+async function renderRoster() {
+  if (typing()) return;
+  ROSTER = await rpc('coc_roster', { p_game: gameId });
+  home = home || await rpc('coc_instructor_home');
+  const teamName = id => { const t = (G.teams || []).find(x => x.id === id); return t ? `${esc(t.brand)}${t.name ? ' · ' + esc(t.name) : ''}` : 'No team'; };
+  const clanOf = id => { const t = (G.teams || []).find(x => x.id === id), c = t && (G.clans || []).find(x => x.id === t.clan_id); return c ? esc(c.name) : '—'; };
+  const teamOpts = sel => `<option value="">No team</option>` + (G.teams || []).map(t => `<option value="${t.id}" ${t.id === sel ? 'selected' : ''}>${esc(t.brand)}${t.name ? ' · ' + esc(t.name) : ''}</option>`).join('');
+  const rows = ROSTER.map(p => editPlayer === p.user_id
+    ? `<tr><td>${esc(p.last_name)}</td><td>${esc(p.first_name)}</td><td><input id="edScreen" type="text" value="${esc(p.screen_name)}" aria-label="Screen name"></td><td><select id="edTeam" aria-label="Team" ${frozen() ? 'disabled' : ''}>${teamOpts(p.team_id)}</select></td><td>${clanOf(p.team_id)}</td><td>${p.signed_in ? 'Yes' : '<span class="neg">Never</span>'}</td><td><button class="btn small" type="button" data-save-player="${p.user_id}">Save</button></td></tr>`
+    : `<tr><td>${esc(p.last_name)}</td><td>${esc(p.first_name)}</td><td>${esc(p.screen_name)}</td><td>${teamName(p.team_id)}</td><td>${clanOf(p.team_id)}</td><td>${p.signed_in ? 'Yes' : '<span class="neg">Never</span>'}</td><td><button class="btn small secondary" type="button" data-edit-player="${p.user_id}">Edit</button></td></tr>`).join('');
+  app().innerHTML = `<section class="screen stack">${header('detail', 'Roster & teams', 'Students sign in with the same email as Burgerville. Real names appear only on this screen and in the CSV download.')}
+    ${importCard()}
+    <div class="grid2">
+      <div class="card"><h3>Upload roster</h3><p class="note">Columns: Last Name, First Name, Email, Screen Name, Team Brand (any order). A blank Team Brand means no team. Students need an account already, which a Burgerville roster gives them.</p>
+        <input type="file" id="rosterFile" accept=".csv" aria-label="Roster CSV"> <button class="btn small" type="button" id="rosterUp">Upload</button><p class="note" id="rosterMsg"></p></div>
+      <div class="card"><h3>Upload team names</h3><p class="note">Columns: team_brand, team_name.</p>
+        <input type="file" id="namesFile" accept=".csv" aria-label="Team names CSV"> <button class="btn small" type="button" id="namesUp">Upload</button><p class="note" id="namesMsg"></p></div>
+    </div>
+    <div class="card"><h3>Add one student</h3><form id="addOne" class="clan-ctl"><input id="addEmail" type="email" placeholder="student@wcupa.edu" aria-label="Student email" style="flex:1 1 220px">
+      <input id="addScreen" type="text" placeholder="Screen name" aria-label="Screen name"><input id="addTeam" type="text" placeholder="Team brand (optional)" aria-label="Team brand"><button class="btn small" type="submit">Add</button></form></div>
+    <div class="card"><h3>Teams <span class="aside">${(G.teams || []).length}</span></h3><div class="scroll-x"><table class="t"><thead><tr><th>Brand</th><th>Team name</th><th class="num">Signed in</th><th class="num">Roster</th><th></th></tr></thead><tbody>
+      ${(G.teams || []).map(t => `<tr class="${t.is_new ? 'newrow' : ''}"><td>${esc(t.brand)}</td><td><input type="text" data-team-name="${t.id}" value="${esc(t.name)}" aria-label="Name for ${esc(t.brand)}"></td><td class="num">${t.signed_in}</td><td class="num">${t.roster}</td><td><button class="btn small secondary" type="button" data-save-team="${t.id}">Save</button></td></tr>`).join('') || '<tr><td colspan="5" class="note">No teams yet.</td></tr>'}
+      </tbody></table></div></div>
+    <div class="card"><h3>Students <span class="aside">${ROSTER.length} · sorted by last name</span></h3><div class="scroll-x"><table class="t"><thead><tr><th>Last name</th><th>First name</th><th>Screen name</th><th>Team</th><th>Clan</th><th>Signed in</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="note">No students yet.</td></tr>'}</tbody></table></div>
+      <p class="note">Students who have never signed in are left out of the market and team averages until they do.</p>
+      <button class="btn danger small" type="button" id="clearRoster" ${frozen() ? 'disabled' : ''}>Clear roster</button></div></section>`;
+  wireImport();
+  $('rosterUp').onclick = uploadRoster; $('namesUp').onclick = uploadNames;
+  $('addOne').addEventListener('submit', async e => {
+    e.preventDefault();
+    const em = $('addEmail').value.trim(); if (!em) return toast('Enter an email.');
+    const r = await act('coc_add_students', { p_rows: [{ email: em, screen_name: $('addScreen').value.trim(), team: $('addTeam').value.trim() }] });
+    if (r && r.not_found.length) toast(`No account found for ${r.not_found[0]}. Add them to a Burgerville roster first.`);
+  });
+  $('clearRoster').onclick = async () => { if ($('clearRoster').dataset.sure) await act('coc_clear_roster'); else { $('clearRoster').dataset.sure = '1'; $('clearRoster').textContent = 'Press again to clear the whole roster'; } };
+}
+function importCard() {
+  const cls = (home && home.classes) || [];
+  return `<div class="card"><h3><span><span class="stepn">1</span>Import from a Burgerville class</span></h3>
+    <div class="note">Brings students, screen names, teams and team names across. Students sign in with the same email.</div>
+    <div class="src-ctl" style="margin-top:8px"><select id="bvClass" aria-label="Burgerville class to import">${cls.map(c => `<option value="${esc(c.id)}" ${c.id === G.game.source_instance_id ? 'selected' : ''}>${esc(c.name)} · ${c.students} students · ${c.teams} teams · ${c.no_team} without a team${c.email_login ? '' : ' · email-only login is off'}</option>`).join('')}</select>
+    <button class="btn small" type="button" id="bvImport" ${cls.length ? '' : 'disabled'}>Import</button></div>
+    ${importMsg ? `<div class="import-ok">${importMsg}</div>` : ''}</div>`;
+}
+function wireImport() {
+  const b = $('bvImport'); if (!b) return;
+  b.onclick = () => {
+    const id = $('bvClass').value, c = home.classes.find(x => x.id === id);
+    act('coc_import_burgerville', { p_instance: id }, async r => { importMsg = `<b>Imported from ${esc(c.name)}:</b> ${r.students} students (${r.added} new), ${r.teams} teams, and ${r.no_team} students without a team.${c.email_login ? '' : ' <b>Email-only login is off for this class, so these students can\'t sign in until you turn it on in Burgerville.</b>'}`; });
+  };
+}
+function parseCsv(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); cell = ''; if (row.some(x => x.trim())) rows.push(row); row = []; }
+    else cell += ch;
+  }
+  row.push(cell); if (row.some(x => x.trim())) rows.push(row);
+  if (!rows.length) return [];
+  const heads = rows[0].map(h => h.replace(/^﻿/, '').trim().toLowerCase().replace(/[\s_]+/g, ''));
+  return rows.slice(1).map(r => { const o = {}; heads.forEach((h, i) => { o[h] = (r[i] || '').trim(); }); return o; });
+}
+async function uploadRoster() {
+  const f = $('rosterFile').files[0], msg = $('rosterMsg'); if (!f) return toast('Choose a CSV file first.');
+  const rows = parseCsv(await f.text()).map(r => ({ last_name: r.lastname, first_name: r.firstname, email: r.email, screen_name: r.screenname, team: r.teambrand || r.team })).filter(r => r.email);
+  if (!rows.length) { msg.textContent = 'No rows found. Check that the file has an Email column.'; return; }
+  let added = 0, missing = [];
+  try {
+    for (let i = 0; i < rows.length; i += 25) {
+      msg.textContent = `Uploading… (batch ${Math.floor(i / 25) + 1} of ${Math.ceil(rows.length / 25)})`;
+      const r = await rpc('coc_add_students', { p_game: gameId, p_rows: rows.slice(i, i + 25) });
+      added += r.added; missing = missing.concat(r.not_found);
+    }
+  } catch (e) { msg.textContent = `Stopped after ${added} students: ${e.message}`; return; }
+  importMsg = `<b>CSV uploaded:</b> ${added} students added.${missing.length ? ` No account for: ${esc(missing.join(', '))}. Add them to a Burgerville roster first.` : ''}`;
+  await loadGame();
+}
+async function uploadNames() {
+  const f = $('namesFile').files[0]; if (!f) return toast('Choose a CSV file first.');
+  const rows = parseCsv(await f.text()).map(r => ({ team_brand: r.teambrand, team_name: r.teamname })).filter(r => r.team_brand);
+  const n = await act('coc_set_team_names', { p_rows: rows });
+  if (n != null) toast(`${n} team names saved.`);
+}
+
+/* ---------- clans ---------- */
+function renderClans() {
+  if (typing()) return;
+  const cl = G.clans || [], teams = G.teams || [], locked = frozen(), total = cl.reduce((s, c) => s + c.signed_in, 0), avg = cl.length ? total / cl.length : 0;
+  const opts = sel => cl.map(c => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+  const names = cl.map(c => c.name);
+  const newTeams = teams.filter(t => t.is_new);
+  app().innerHTML = `<section class="screen stack">${header('detail', 'Clans', `Bring in the roster, group teams into clans, then place students who have no team. Clans coordinate output and share a private chat; teams are scored. <b>${locked ? 'Clans froze when you started Round 1.' : `${G.signed_in} signed in; clans will freeze when you start Round 1.`}</b>`)}
+    ${locked ? '' : importCard()}
+    <div class="card"><h3><span><span class="stepn">2</span>Group teams into clans</span> <span class="aside">Change a team's clan with its dropdown</span></h3>
+      <div class="clan-ctl"><label class="note" for="nClans">Number of clans</label>
+        <select id="nClans" ${locked ? 'disabled' : ''}>${[2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<option ${n === cl.length ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        <button class="btn sage small" id="autoBtn" type="button" ${locked ? 'disabled' : ''}>Auto-balance</button>
+        <button class="btn secondary small" id="shuffleBtn" type="button">Shuffle clan names</button>
+        <span class="note">${G.game.manual_clans ? 'You moved a team, so sign-ins now only place new teams. Press Auto-balance to re-balance everything.' : 'Auto-balance keeps every team whole and evens out signed-in headcount.'}</span></div>
+      <div class="clan-grid">${cl.map(c => { const ts = teams.filter(t => t.clan_id === c.id), off = total && Math.abs(c.signed_in - avg) > 2;
+        return `<div class="clan-card"><select class="clan-name" data-rename="${c.number}" aria-label="Name for clan ${c.number}">${CLAN_BANK.concat(CLAN_BANK.includes(c.name) ? [] : [c.name]).map(b => `<option ${b === c.name ? 'selected' : ''} ${b !== c.name && names.includes(b) ? 'disabled' : ''}>${esc(b)}</option>`).join('')}</select>
+          <div class="clan-n ${off ? 'off' : ''}">${c.signed_in} signed in · ${c.roster} on roster${off ? ' · uneven' : ''}</div>
+          <div class="chips-row">${ts.map(t => `<span class="tchip ${t.is_new ? 'solo' : ''}">${esc(t.brand)} <span class="note">${t.signed_in}</span></span>`).join('')}</div></div>`; }).join('')}</div>
+      <div class="scroll-x" style="margin-top:14px"><table class="t"><thead><tr><th>Brand</th><th>Team name</th><th class="num">Signed in</th><th class="num">Roster</th><th>Clan</th></tr></thead><tbody>
+        ${teams.map(t => `<tr class="${t.is_new ? 'newrow' : ''}"><td>${esc(t.brand)}</td><td>${esc(t.name)}${t.is_new ? ' <span class="note">new team</span>' : ''}</td><td class="num">${t.signed_in}</td><td class="num">${t.roster}</td><td><select data-move="${t.id}" aria-label="Clan for ${esc(t.brand)}" ${locked ? 'disabled' : ''}><option value="">No clan</option>${opts(t.clan_id)}</select></td></tr>`).join('') || '<tr><td colspan="5" class="note">No teams yet. Import a roster above.</td></tr>'}
+      </tbody></table></div></div>
+    <div class="card"><h3><span><span class="stepn">3</span>New teams for students without one</span> <span class="aside">${G.no_team.signed_in} signed in without a team · ${G.no_team.not_yet} not signed in yet</span></h3>
+      <p class="note" style="margin:0 0 10px">Students without a team are grouped into new teams of <b>4–5</b> as they sign in. <b>Before you start Round 1</b>, the new teams re-form on each sign-in, and the clans re-balance too unless you've moved a team. <b>At Start Round 1</b>, a student who is the only one from their team signed in joins the new teams, and clans freeze. <b>After that</b>, nobody moves: a late arrival joins their team if a teammate is playing; otherwise they join the smallest new team (up to 5) or start one in the smallest clan.</p>
+      <div class="nt-grid">${newTeams.map(t => { const c = cl.find(x => x.id === t.clan_id); return `<div class="nt-card"><div class="nt-h"><b>${esc(t.brand)} · ${esc(t.name)}</b><span class="note">${c ? esc(c.name) : 'not placed'}</span></div><div class="chips-row">${(t.members || []).map(m => `<span class="tchip">${esc(m)}</span>`).join('')}</div><div class="note">${t.signed_in} students${t.signed_in < 4 ? ' · fills as more students sign in' : ''}</div></div>`; }).join('') || '<span class="note">No new teams yet.</span>'}</div>
+      <p class="note" style="margin:10px 0 0">New teams get a built-in name you can change on the Roster screen.</p></div>
+  </section>`;
+  $('nClans').onchange = e => { act('coc_set_clans', { p_count: Number(e.target.value) }); };
+  $('autoBtn').onclick = () => act('coc_auto_balance');
+  $('shuffleBtn').onclick = () => act('coc_rename_clans', { p_names: CLAN_BANK.slice().sort(() => Math.random() - 0.5).slice(0, cl.length) });
+  document.querySelectorAll('[data-rename]').forEach(s => { s.onchange = () => { const list = (G.clans || []).map(c => c.name); list[Number(s.dataset.rename) - 1] = s.value; act('coc_rename_clans', { p_names: list }); }; });
+  document.querySelectorAll('[data-move]').forEach(s => { s.onchange = () => act('coc_move_team', { p_team: Number(s.dataset.move), p_clan: s.value ? Number(s.value) : null }); });
+  wireImport();
+}
+
+/* ---------- rounds ---------- */
+function renderRounds() {
+  const rounds = (G.rounds_data || []).filter(r => r.number <= G.game.rounds);
+  if (editRound == null || !rounds.find(r => r.number === editRound)) { const nx = rounds.find(r => !r.started); editRound = nx ? nx.number : rounds[rounds.length - 1].number; }
+  const r = rounds.find(x => x.number === editRound), prev = rounds.find(x => x.number === editRound - 1), Un = U(), lock = r.started;
+  const v = (x, d) => (x == null ? d : x);
+  app().innerHTML = `<section class="screen stack">${header('detail', `${Un} ${r.number}: ${r.name || ''}`, `Every parameter here is shown to students when the ${u()} opens. The benchmarks are for you only; students never see them. ${Un} 1 starts at ${pts(G.game.start_pct)}% of Q₀, equal per player (set in Game settings).`)}
+    <div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="note">${Un}s:</span>
+      ${rounds.map(x => `<button class="btn small ${x.number === r.number ? '' : 'secondary'}" type="button" data-round="${x.number}">${x.number} · ${esc(x.name || '')} · ${x.ran ? 'graded' : x.started ? 'open' : 'draft'}</button>`).join('')}</div></div>
+    <div class="grid2"><div class="card"><h3>Parameters${lock ? ' <span class="aside">Locked: this round has started</span>' : ''}</h3>
+      <div class="fields">
+        <div class="field" style="grid-column:1/-1"><label for="sName">${Un} name</label><input id="sName" type="text" value="${esc(r.name)}" ${lock ? 'disabled' : ''}></div>
+        <div class="field"><label for="sQ0">Demand intercept Q₀ (lb)</label><input class="edit" id="sQ0" type="text" value="${fmt(r.q0)}" ${lock ? 'disabled' : ''}>${prev ? `<span class="h">${Un} ${prev.number}: ${fmt(prev.q0)}</span>` : ''}</div>
+        <div class="field"><label for="sB">dQ/dP (lb per $1)</label><input class="edit" id="sB" type="text" value="${fmt(r.dqdp)}" ${lock ? 'disabled' : ''}><span class="h">Positive number</span></div>
+        <div class="field"><label for="sC">Marginal cost c ($/lb)</label><input class="edit" id="sC" type="text" value="${Number(r.mc).toFixed(2)}" ${lock ? 'disabled' : ''}></div>
+        <div class="field"><label for="sF">Fixed cost F ($ per player)</label><input class="edit" id="sF" type="text" value="${r.f == null ? '' : fmt(r.f)}" placeholder="Set at Start Round 1" ${lock ? 'disabled' : ''}><span class="h">${frozen() ? 'Enter a value only for a cost shock.' : `Suggested at Start Round 1: $${fmt(G.game.market_fixed_cost)} ÷ ${G.signed_in || 'players'}${G.signed_in ? ' players' : ''}. You can change it; it then stays fixed.`}</span></div>
+        <div class="field"><label for="sVote">Clan vote timer (seconds)</label><input class="edit" id="sVote" type="text" value="${v(r.vote_secs, '')}" placeholder="Game default: ${secsLabel(G.game.vote_secs)}" ${lock ? 'disabled' : ''}><span class="h">Leave blank to use the timer in Game settings.</span></div>
+        <div class="field"><label for="sFirm">Firm decision timer (seconds)</label><input class="edit" id="sFirm" type="text" value="${v(r.firm_secs, '')}" placeholder="Game default: ${secsLabel(G.game.firm_secs)}" ${lock ? 'disabled' : ''}></div>
+      </div>
+      <div class="field" style="margin-top:12px"><label for="sNews">News shown to students</label><textarea id="sNews" rows="3" ${lock ? 'disabled' : ''}>${esc(r.news)}</textarea></div>
+      <div style="margin-top:12px"><button class="btn" type="button" id="saveRound" ${lock ? 'disabled' : ''}>Save ${u()}</button> <span class="note" id="roundMsg"></span></div></div>
+      <div class="stack"><div class="card"><h3>Benchmarks <button class="btn small secondary" type="button" id="benchBtn">${showBench ? 'Hide' : 'Show'}</button></h3>
+        <p class="note" id="benchHid" style="margin:0" ${showBench ? 'hidden' : ''}>Hidden so this screen is safe to project. The cooperative, clan and competitive outcomes are for you only.</p>
+        <div class="scroll-x" id="benchBox" ${showBench ? '' : 'hidden'}><table class="t"><thead><tr><th>Outcome</th><th class="num">Total output (lb)</th><th class="num">Price</th><th class="num">Profit per player</th></tr></thead><tbody id="benchRows"></tbody></table></div></div>
+        <div class="card"><h3>Demand curve</h3><svg id="demandSvg" viewBox="0 0 460 260" width="100%" role="img" aria-label="Demand curve and marginal cost"></svg></div></div></div></section>`;
+  document.querySelectorAll('[data-round]').forEach(b => { b.onclick = () => { editRound = Number(b.dataset.round); renderRounds(); }; });
+  $('benchBtn').onclick = () => { showBench = !showBench; renderRounds(); };
+  $('saveRound').onclick = async () => {
+    const res = await act('coc_save_round', { p_round: r.number, p: { name: $('sName').value, news: $('sNews').value, q0: parseNum($('sQ0').value), dqdp: parseNum($('sB').value), mc: parseNum($('sC').value), f: $('sF').value.trim() ? parseNum($('sF').value) : '', vote_secs: $('sVote').value.trim(), firm_secs: $('sFirm').value.trim() } });
+    if (res !== undefined) { const m = $('roundMsg'); if (m) m.textContent = 'Saved.'; }
+  };
+  ['sQ0', 'sB', 'sC', 'sF'].forEach(id => $(id).addEventListener('input', drawRoundPreview));
+  drawRoundPreview();
+}
+function drawRoundPreview() {
+  const Q0 = parseNum($('sQ0').value), b = parseNum($('sB').value), c = parseNum($('sC').value), N = Math.max(1, G.signed_in), K = Math.max(1, (G.clans || []).length);
+  const F = $('sF').value.trim() ? parseNum($('sF').value) : Number(G.game.market_fixed_cost) / N;
+  if (!b || !Q0) return;
+  const rows = [['Cooperative', (Q0 - b * c) / 2], [`${K} clans compete`, K * (Q0 - b * c) / (K + 1)], [`${N} players compete`, N * (Q0 - b * c) / (N + 1)], ['Competitive', Q0 - b * c]]
+    .map(([nm, Q]) => { const P = Math.max(0, (Q0 - Q) / b); return [nm, Q, P, (P - c) * Q / N - F]; });
+  if (showBench) $('benchRows').innerHTML = rows.map(r => `<tr><td>${r[0]}</td><td class="num">${fmt(r[1])}</td><td class="num">${price(r[2])}</td><td class="num ${r[3] < 0 ? 'neg' : ''}">${money(r[3])}</td></tr>`).join('');
+  const L = 54, R = 440, T = 14, B = 220, qMax = Q0 * 1.05, pMax = Q0 / b * 1.08;
+  const x = q => L + q / qMax * (R - L), y = p => B - p / pMax * (B - T);
+  let h = `<line x1="${L}" y1="${B}" x2="${R}" y2="${B}" stroke="var(--muted)"/><line x1="${L}" y1="${T}" x2="${L}" y2="${B}" stroke="var(--muted)"/>`;
+  for (let p = 0; p <= pMax; p += 5) h += `<text x="${L - 6}" y="${y(p) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">$${p}</text><line x1="${L}" x2="${R}" y1="${y(p)}" y2="${y(p)}" stroke="var(--paper-line)"/>`;
+  for (let q = 0; q <= qMax; q += 10e9) h += `<text x="${x(q)}" y="${B + 16}" text-anchor="middle" font-size="11" fill="var(--muted)">${q / 1e9}B</text>`;
+  h += `<text x="${(L + R) / 2}" y="${B + 34}" text-anchor="middle" font-size="11" fill="var(--muted)">Total output (lb)</text>`;
+  h += `<line x1="${x(0)}" y1="${y(Q0 / b)}" x2="${x(Q0)}" y2="${y(0)}" stroke="var(--demand)" stroke-width="2.5"/>`;
+  h += `<line x1="${L}" x2="${R}" y1="${y(c)}" y2="${y(c)}" stroke="var(--supply)" stroke-width="2" stroke-dasharray="6 4"/><text x="${R}" y="${y(c) - 6}" text-anchor="end" font-size="11" fill="var(--supply)">MC = ${price(c)}</text>`;
+  const colors = ['var(--new-eq)', 'var(--gold)', 'var(--rust)', 'var(--supply)'], short = ['Coop', `${K} clans`, `${N} players`, 'Comp'];
+  if (showBench) rows.forEach((r, i) => { h += `<circle cx="${x(r[1])}" cy="${y(r[2])}" r="5" fill="${colors[i]}" stroke="var(--panel)" stroke-width="1.5"/><text x="${x(r[1]) + 8}" y="${y(r[2]) - 6 - (i === 2 ? 12 : 0)}" font-size="11" font-weight="700" fill="${colors[i]}">${esc(short[i])}</text>`; });
+  $('demandSvg').innerHTML = h;
+}
+
+/* ---------- results ---------- */
+async function renderResults() {
+  RES = await rpc('coc_results_view', { p_game: gameId });
+  const Un = U();
+  if (!RES.length) { app().innerHTML = `<section class="screen stack">${header('detail', 'Results', '')}<div class="card"><p class="sans" style="margin:0">Results appear here after the first ${u()} runs.</p></div></section>`; return; }
+  if (resRound == null || (resRound !== 'all' && !RES.find(x => x.round === resRound))) resRound = RES[RES.length - 1].round;
+  const nav_ = `<div class="subnav" id="resNav"><button class="${resPane === 'market' ? 'on' : ''}" data-r="market" type="button">Market</button><button class="${resPane === 'teams' ? 'on' : ''}" data-r="teams" type="button">Team leaderboard</button><span style="flex:1"></span>
+    <select id="resRoundSel" aria-label="${Un}">${RES.slice().reverse().map(x => `<option value="${x.round}" ${x.round === resRound ? 'selected' : ''}>${Un} ${x.round}</option>`).join('')}${resPane === 'teams' ? `<option value="all" ${resRound === 'all' ? 'selected' : ''}>All ${u()}s (cumulative)</option>` : ''}</select>
+    <button class="btn small secondary" type="button" id="csvBtn">Download CSV${G.linked.length ? ': all sessions' : ''}, with real names</button></div>`;
+  const d = resRound === 'all' ? RES[RES.length - 1] : RES.find(x => x.round === resRound);
+  let body = '';
+  if (resPane === 'market') {
+    body = `<div class="stack"><div class="card"><h3>Outcome</h3><table class="t"><tbody>
+      <tr><td>Market price</td><td class="num"><b>${price(d.price)}</b></td></tr><tr><td>Total output</td><td class="num">${bil(d.total_q)} billion lb</td></tr>
+      <tr><td>ATC of the average player</td><td class="num">${price(d.avg_atc)}</td></tr><tr><td>In the market</td><td class="num">${d.players} students</td></tr>
+      <tr><td>Voted</td><td class="num">${d.voted} of ${d.players}</td></tr><tr><td>Chose split or steal</td><td class="num">${d.chose} of ${d.voted} voters</td></tr>
+      <tr><td>Counted as Split, 0 points</td><td class="num">${d.players - d.took_part} students</td></tr></tbody></table></div>
+      <div class="card"><h3>Clans: vote, steals and output</h3><div class="scroll-x"><table class="t"><thead><tr><th>Clan</th><th>Vote result</th><th class="num">Plan (billion lb)</th><th class="num">Steals</th><th class="num">Actual (billion lb)</th><th class="num">Over plan</th></tr></thead><tbody>
+      ${(d.clans || []).map(c => { const ov = Number(c.plan) ? (c.actual / c.plan - 1) * 100 : 0; return `<tr class="${ov > 5 ? 'flag' : ''}"><td>${esc(c.name)}</td><td>${voteLabel(c.vote_result)} (${c.votes_for || 0} of ${c.votes_cast || 0})</td><td class="num">${bil(c.plan)}B</td><td class="num">${c.steals}</td><td class="num">${bil(c.actual)}B</td><td class="num ${ov > 5 ? 'over' : ''}">+${ov.toFixed(1)}%</td></tr>`; }).join('')}</tbody></table></div>
+      <p class="note">Highlighted when a clan's steals push it more than 5% over plan. Students see each clan's actual total, never individual choices.</p></div></div>`;
+  } else if (resRound === 'all') {
+    const tot = {}; RES.forEach(x => (x.teams || []).forEach(t => { const o = tot[t.brand] = tot[t.brand] || { ...t, points: 0, n: 0 }; o.points += Number(t.points); o.n++; }));
+    const list = Object.values(tot).sort((a, b) => b.points - a.points);
+    body = `<div class="card"><h3>Team leaderboard, all ${u()}s <span class="aside">Safe to project: team names only.</span></h3><div class="scroll-x"><table class="t"><thead><tr><th>#</th><th>Team</th><th>Clan</th><th class="num">Team points</th></tr></thead><tbody>
+      ${list.map((t, i) => `<tr><td>${i + 1}</td><td>${esc(t.name || t.brand)} <span class="note">${esc(t.name ? t.brand : '')}</span></td><td>${esc(t.clan)}</td><td class="num"><b>${pts(t.points)}</b></td></tr>`).join('')}</tbody></table></div></div>`;
+  } else {
+    const g = G.game, k = g.points_mode === 'scale' ? Number(g.total_points) / (g.rounds * (Number(g.pts_base) + Number(g.pts_rank))) : 1;
+    const rows = (d.teams || []).filter(t => t.displayed);
+    body = `<div class="card"><h3>Team leaderboard <span class="aside">Safe to project: team names only. Teams with fewer than 2 participants are ranked but hidden. Members who didn't take part get 0.</span></h3><div class="scroll-x"><table class="t"><thead><tr><th>#</th><th>Team</th><th>Clan</th><th class="num">Avg profit</th><th class="num">Rank pts</th><th class="num">Loss penalty</th><th class="num">Team points</th></tr></thead><tbody>
+      ${rows.map(t => { const n = Number(t.n_teams), rp = k * Number(g.pts_rank) * (n > 1 ? (n - Number(t.rank)) / (n - 1) : 1), lp = Number(t.avg_profit) < 0 ? k * Math.min(Number(g.pts_loss), Number(g.pts_loss) * Math.abs(t.avg_profit) / Number(d.f)) : 0;
+        return `<tr><td>${pts(t.rank)}</td><td>${esc(t.name || t.brand)} <span class="note">${esc(t.name ? t.brand : '')}</span></td><td>${esc(t.clan)}</td><td class="num ${Number(t.avg_profit) < 0 ? 'neg' : ''}">${money(Number(t.avg_profit))}</td><td class="num">${pts(rp)}</td><td class="num ${lp ? 'neg' : ''}">${lp ? '−' + pts(lp) : '—'}</td><td class="num"><b>${pts(t.points)}</b></td></tr>`; }).join('') || '<tr><td colspan="7" class="note">No team had 2 or more participants this round.</td></tr>'}</tbody></table></div></div>`;
+  }
+  app().innerHTML = `<section class="screen stack">${header('detail', `Results · ${resRound === 'all' ? 'All ' + u() + 's' : Un + ' ' + resRound}`, '')}${nav_}${body}</section>`;
+  document.querySelectorAll('#resNav [data-r]').forEach(b => { b.onclick = () => { resPane = b.dataset.r; if (resPane === 'market' && resRound === 'all') resRound = null; renderResults(); }; });
+  $('resRoundSel').onchange = e => { resRound = e.target.value === 'all' ? 'all' : Number(e.target.value); renderResults(); };
+  $('csvBtn').onclick = downloadCsv;
+}
+function voteLabel(k) { const g = G.game; return { down2: `Cut ${pts(g.step_large)}%`, down: `Cut ${pts(g.step_small)}%`, same: 'No change', up: `Increase ${pts(g.step_small)}%`, up2: `Increase ${pts(g.step_large)}%` }[k] || '—'; }
+async function downloadCsv() {
+  try {
+    const rows = await rpc('coc_export_rows', { p_game: gameId });
+    const maxR = Math.max(0, ...rows.flatMap(r => Object.keys(r.by_round || {}).map(Number)));
+    const cols = ['Last Name', 'First Name', 'Email', 'Screen Name', 'Session', 'Team', 'Team Name', 'Clan', 'Total Points'].concat(Array.from({ length: maxR }, (_, i) => `${U()} ${i + 1}`));
+    const q = v => { let s = String(v == null ? '' : v); if (/^[=+\-@]/.test(s)) s = "'" + s; return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const lines = [cols.map(q).join(',')].concat(rows.map(r => [r.last_name, r.first_name, r.email, r.screen_name, r.session || r.game, r.team, r.team_name, r.clan, pts(r.total, 6)].concat(Array.from({ length: maxR }, (_, i) => { const v = (r.by_round || {})[i + 1]; return v == null ? '' : pts(v, 6); })).map(q).join(',')));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+    a.download = `${gameId}-scores.csv`; document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) { toast(e.message); }
+}
+
+/* ---------- chat moderation ---------- */
+async function renderChat() {
+  if (typing()) return;
+  const cl = G.clans || [];
+  if (!cl.length) { app().innerHTML = `<section class="screen stack">${header('detail', 'Chat moderation', '')}<div class="card"><p class="sans" style="margin:0">Set up clans first.</p></div></section>`; return; }
+  if (!chatClan || !cl.find(c => c.id === chatClan)) chatClan = cl[0].id;
+  const c = cl.find(x => x.id === chatClan), log = await rpc('coc_chat_log', { p_game: gameId, p_clan: chatClan }), allOn = cl.every(x => x.chat_on);
+  const scroll = $('modMsgs') ? window.scrollY : null;
+  app().innerHTML = `<section class="screen stack">${header('detail', 'Chat moderation', "Students see \"Your instructor can read all messages\" above their clan chat. A muted student can't vote and earns 0 until unmuted, and counts as Split. Turning a clan's chat off drops its chat requirement.")}
+    <div class="card" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center"><label class="toggle"><input type="checkbox" id="allChat" ${allOn ? 'checked' : ''}> All chat on</label><button class="btn small secondary" type="button" id="exportChat">Export this channel (CSV)</button></div>
+    <div class="chat-layout"><div class="card" style="padding:10px">${cl.map(x => `<div class="chan ${x.id === chatClan ? 'on' : ''}" data-ch="${x.id}"><span>${esc(x.name)}</span><span class="cnt">${x.chat_n} msgs${x.chat_on ? '' : ' · off'}</span></div>`).join('')}
+      <hr style="border:0;border-top:1px solid var(--border)"><div class="note" style="padding:0 6px">Muted: ${log.muted.length ? log.muted.map(m => `${esc(m.screen_name)} <button class="linkbtn" type="button" data-mute="${m.user_id}" data-val="0">Unmute</button>`).join(', ') : 'none'}</div></div>
+      <div class="card"><h3>${esc(c.name)} <label class="toggle" style="font-weight:400;font-family:var(--sans)"><input type="checkbox" id="chanOn" ${c.chat_on ? 'checked' : ''}> Channel on</label></h3><div id="modMsgs">
+      ${log.messages.map(m => `<div class="msg ${m.hidden ? 'hidden' : ''}"><div class="body"><div class="who"><b>${esc(m.screen_name)}</b> · ${esc(m.team_brand)} · ${U()} ${m.round} · ${new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${m.hidden ? ' · <span class="neg">hidden from students</span>' : ''}</div><div class="text">${esc(m.body)}</div></div>
+        <div class="acts"><button class="btn small secondary" data-hide="${m.id}" data-val="${m.hidden ? 0 : 1}" type="button">${m.hidden ? 'Unhide' : 'Hide'}</button><button class="btn small secondary" type="button" data-mute="${m.user_id}" data-val="${m.muted ? 0 : 1}">${m.muted ? 'Unmute' : 'Mute'} ${esc(m.screen_name)}</button></div></div>`).join('') || '<p class="note">No messages yet.</p>'}</div></div></div></section>`;
+  if (scroll != null) window.scrollTo(0, scroll);
+  $('allChat').onchange = e => act('coc_set_chat', { p_clan: null, p_on: e.target.checked });
+  $('chanOn').onchange = e => act('coc_set_chat', { p_clan: chatClan, p_on: e.target.checked });
+  document.querySelectorAll('[data-ch]').forEach(el => { el.onclick = () => { chatClan = Number(el.dataset.ch); renderChat(); }; });
+  document.querySelectorAll('[data-hide]').forEach(b => { b.onclick = () => act('coc_set_message_hidden', { p_id: Number(b.dataset.hide), p_hidden: b.dataset.val === '1' }); });
+  document.querySelectorAll('[data-mute]').forEach(b => { b.onclick = () => act('coc_set_mute', { p_user: b.dataset.mute, p_muted: b.dataset.val === '1' }); });
+  $('exportChat').onclick = () => {
+    const q = v => { let s = String(v == null ? '' : v); if (/^[=+\-@]/.test(s)) s = "'" + s; return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const lines = [['Round', 'Time', 'Screen Name', 'Team', 'Hidden', 'Message'].join(',')].concat(log.messages.map(m => [m.round, m.created_at, m.screen_name, m.team_brand, m.hidden ? 'yes' : 'no', m.body].map(q).join(',')));
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); a.download = `${gameId}-${c.name}-chat.csv`; document.body.appendChild(a); a.click(); a.remove();
+  };
+}
+
+/* ---------- settings ---------- */
+function timerParts(sec) { return sec % 86400 === 0 ? [sec / 86400, 86400] : sec % 3600 === 0 ? [sec / 3600, 3600] : sec % 60 === 0 ? [sec / 60, 60] : [sec, 1]; }
+function renderSettings() {
+  const g = G.game, lock = frozen(), [v, vu] = timerParts(g.vote_secs), [f, fu] = timerParts(g.firm_secs);
+  const uopt = sel => [[1, 'seconds'], [60, 'minutes'], [3600, 'hours'], [86400, 'days']].map(([a, b]) => `<option value="${a}" ${a === sel ? 'selected' : ''}>${b}</option>`).join('');
+  const labels = { cut2: 'Message 1 (large cut)', cut: 'Message 2 (small cut)', pat: 'Message 3 (no change)', up: 'Message 4 (small increase)', up2: 'Message 5 (large increase)' };
+  app().innerHTML = `<section class="screen stack">${header('detail', 'Game settings', '')}
+    <div class="card"><h3>Game</h3><div class="fields"><div class="field"><label for="gName">Game name</label><input id="gName" type="text" value="${esc(g.name)}"></div><div class="field"><label for="gSess">Session label</label><input id="gSess" type="text" value="${esc(g.session_label)}" placeholder="Optional"></div></div></div>
+    <div class="card"><h3>Pace and timers</h3><div class="pace-row">
+      <label class="pace"><input type="radio" name="pace" value="in_class" ${g.pace === 'in_class' ? 'checked' : ''}> <span><b>In class</b><br><span class="note">Timers in minutes; 5–10 rounds an hour</span></span></label>
+      <label class="pace"><input type="radio" name="pace" value="over_days" ${g.pace === 'over_days' ? 'checked' : ''}> <span><b>Over days</b><br><span class="note">Timers in hours or days, with a deadline</span></span></label></div>
+      <div class="fields" style="margin-top:12px">
+        <div class="field"><label for="tVote">Clan vote timer</label><div class="unit-row"><input class="edit" id="tVote" type="text" value="${v}"><select id="tVoteU" aria-label="Clan vote timer unit">${uopt(vu)}</select></div></div>
+        <div class="field"><label for="tFirm">Firm decision timer</label><div class="unit-row"><input class="edit" id="tFirm" type="text" value="${f}"><select id="tFirmU" aria-label="Firm decision timer unit">${uopt(fu)}</select></div></div>
+        <div class="field"><label for="tRounds">Rounds in this game</label><input class="edit" id="tRounds" type="text" value="${g.rounds}" ${lock ? 'disabled' : ''}><span class="h">During play, use End game now or Add one more round on the game page.</span></div>
+        <div class="field"><label class="toggle" style="margin-top:20px"><input type="checkbox" id="tAuto" ${g.auto_run ? 'checked' : ''}> Run each round as soon as its firm decision timer ends, while this page is open (off: you add time or run it yourself)</label></div>
+      </div></div>
+    <div class="card"><h3>Points</h3><div class="pace-row">
+      <label class="pace"><input type="radio" name="pmode" value="scale" ${g.points_mode === 'scale' ? 'checked' : ''}> <span><b>Scale the whole game to</b> <input class="edit small-in" id="pTotal" type="text" value="${pts(g.total_points)}" aria-label="Total points"> <b>points</b><br><span class="note">Each round is worth an equal share</span></span></label>
+      <label class="pace"><input type="radio" name="pmode" value="per_round" ${g.points_mode === 'per_round' ? 'checked' : ''}> <span><b>Points per round</b><br><span class="note">B, R and L below, every round</span></span></label></div>
+      <p class="scale-out" id="scaleOut"></p><div class="formula">Points = B + R × (teams − rank) ÷ (teams − 1) − min(L, L × |loss| ÷ F)</div>
+      <div class="fields" style="margin-top:12px;grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div class="field"><label for="pB">Base, B</label><input class="edit" id="pB" type="text" value="${pts(g.pts_base)}"></div><div class="field"><label for="pR">Rank bonus, R</label><input class="edit" id="pR" type="text" value="${pts(g.pts_rank)}"></div><div class="field"><label for="pL">Loss penalty cap, L</label><input class="edit" id="pL" type="text" value="${pts(g.pts_loss)}"></div></div>
+      <p class="note">A student who doesn't take part in a round earns 0 points for it, whatever the team earns. Saving re-scores any rounds already played.</p></div>
+    <div class="card"><h3>Clan plans</h3><div class="fields">
+      <div class="field"><label for="stPct">Round 1 starting plan (% of Q₀)</label><input class="edit" id="stPct" type="text" value="${pts(g.start_pct)}" ${lock ? 'disabled' : ''}><span class="h">Equal per player</span></div>
+      <div class="field"><label for="stStep">Small vote step (%)</label><input class="edit" id="stStep" type="text" value="${pts(g.step_small)}"><span class="h">Cut or increase the clan plan</span></div>
+      <div class="field"><label for="stStep2">Large vote step (%)</label><input class="edit" id="stStep2" type="text" value="${pts(g.step_large)}"><span class="h">In a tie, the smallest change wins</span></div>
+      <div class="field"><label for="stSteal">Steal adds (%)</label><input class="edit" id="stSteal" type="text" value="${pts(g.steal_pct)}"><span class="h">On top of the member's share</span></div></div>
+      <p class="note">Students who don't vote, or who vote but don't choose, are counted as Split and earn 0 points. Their output and profit still count for the market and their team.</p></div>
+    <div class="card"><h3>Market messages <span class="aside">${lock ? 'Locked: Round 1 has started' : 'You can change these until you start Round 1'}</span></h3>
+      <p class="note" style="margin:0 0 10px">Students choose one of these five each round. Up to 60 characters each. Copy this game copies them too.</p>
+      <div class="stack" style="gap:10px">${MKT_KEYS.map(k => `<div class="field"><label for="mm_${k}">${labels[k]}</label><input id="mm_${k}" class="mmIn" data-k="${k}" type="text" maxlength="60" value="${esc(g.market_messages[k])}" ${lock ? 'disabled' : ''}></div>`).join('')}</div>
+      <div style="margin-top:10px"><button class="btn small secondary" type="button" id="mmReset" ${lock ? 'disabled' : ''}>Restore default wording</button></div></div>
+    <div><button class="btn" type="button" id="saveSettings">Save settings</button> <span class="note" id="setMsg"></span></div></section>`;
+  const scale = () => {
+    const rounds = Math.max(1, parseNum($('tRounds').value) || 1), B = parseNum($('pB').value), R = parseNum($('pR').value), L = parseNum($('pL').value), T = parseNum($('pTotal').value), isScale = document.querySelector('input[name=pmode]:checked').value === 'scale', k = isScale && B + R > 0 ? T / (rounds * (B + R)) : 1;
+    $('scaleOut').innerHTML = isScale ? `<b>${rounds} rounds × up to ${((B + R) * k).toFixed(3)} points = ${pts(T)} points.</b> Each round: base ${(B * k).toFixed(3)}, rank bonus up to ${(R * k).toFixed(3)}, loss penalty up to ${(L * k).toFixed(3)}.` : `Up to ${B + R} points per round; ${rounds} rounds give up to ${rounds * (B + R)} points in total.`;
+  };
+  ['pB', 'pR', 'pL', 'pTotal', 'tRounds'].forEach(id => $(id).addEventListener('input', scale));
+  document.querySelectorAll('input[name=pmode]').forEach(r => r.addEventListener('change', scale));
+  scale();
+  $('mmReset').onclick = () => { const D = { cut2: 'Everyone should decrease output significantly', cut: 'Everyone should decrease output slightly', pat: 'Everyone should keep output the same', up: 'Everyone should increase output slightly', up2: 'Everyone should increase output significantly' }; MKT_KEYS.forEach(k => { $('mm_' + k).value = D[k]; }); };
+  $('saveSettings').onclick = async () => {
+    const mm = {}; MKT_KEYS.forEach(k => { mm[k] = $('mm_' + k).value.trim() || G.game.market_messages[k]; });
+    const res = await act('coc_save_settings', { p: { name: $('gName').value, session_label: $('gSess').value, pace: document.querySelector('input[name=pace]:checked').value,
+      vote_secs: Math.max(1, Math.round(parseNum($('tVote').value) * Number($('tVoteU').value))), firm_secs: Math.max(1, Math.round(parseNum($('tFirm').value) * Number($('tFirmU').value))), auto_run: $('tAuto').checked,
+      rounds: parseNum($('tRounds').value), points_mode: document.querySelector('input[name=pmode]:checked').value, total_points: parseNum($('pTotal').value), pts_base: parseNum($('pB').value), pts_rank: parseNum($('pR').value), pts_loss: parseNum($('pL').value),
+      start_pct: parseNum($('stPct').value), step_small: parseNum($('stStep').value), step_large: parseNum($('stStep2').value), steal_pct: parseNum($('stSteal').value), market_messages: mm } });
+    if (res !== undefined) { const m = $('setMsg'); if (m) m.textContent = 'Saved.'; }
+  };
+}
+
+/* ---------- shared events and clock ---------- */
+document.addEventListener('click', e => {
+  const n = e.target.closest('[data-nav]'); if (n) { nav(n.dataset.nav).catch(err => toast(err.message)); return; }
+  const g = e.target.closest('[data-game]'); if (g) { openGame(g.dataset.game).catch(err => toast(err.message)); return; }
+  const a = e.target.closest('[data-add]'); if (a) { act('coc_adjust_timer', { p_action: 'add', p_secs: Number(a.dataset.add) }); return; }
+  if (e.target.id === 'ctlNo') { panelHtml = ''; renderDetail(); return; }
+  if (e.target.id === 'ctlYes') { const f = confirmPanel.fn; panelHtml = ''; if (f) f(); return; }
+  const ep = e.target.closest('[data-edit-player]'); if (ep) { editPlayer = ep.dataset.editPlayer; renderRoster(); return; }
+  const sp = e.target.closest('[data-save-player]');
+  if (sp) { const t = $('edTeam').value; const u_ = sp.dataset.savePlayer, sc = $('edScreen').value; editPlayer = null; document.activeElement.blur(); act('coc_update_player', { p_user: u_, p_screen: sc, p_team: t ? Number(t) : null }); return; }
+  const st = e.target.closest('[data-save-team]');
+  if (st) { const inp = document.querySelector(`[data-team-name="${st.dataset.saveTeam}"]`); act('coc_update_team', { p_team: Number(st.dataset.saveTeam), p_name: inp.value }).then(() => toast('Team name saved.')); return; }
+  const row = e.target.closest('.game-row[data-game]'); if (row) return;
+});
+function tick() {
+  if (!G || !G.current) return;
+  const v = new Date(G.vote_ends_at).getTime(), f = new Date(G.firm_ends_at).getTime(), now = Date.now() + clockOffset;
+  document.querySelectorAll('.clock').forEach(el => { el.textContent = clockText((el.dataset.clock === 'vote' ? v : f) - now); });
+  if (screen === 'detail' && ((G.phase === 'vote' && now >= v) || (G.phase === 'firm' && now >= f)) && Date.now() - lastFetchAt > 1000) loadGame().catch(() => {});
+}
+setInterval(tick, 250);
+$('signOut').addEventListener('click', e => { e.preventDefault(); sb.auth.signOut(); });
+let entered = false;
+sb.auth.onAuthStateChange((_ev, session) => {
+  setTimeout(() => {
+    if (session && !entered) { entered = true; $('acctEmail').textContent = (session.user && session.user.email) || ''; goGames().catch(err => toast(err.message)); }
+    else if (!session) { entered = false; if (screen !== 'code') showSignIn(); }
+  }, 0);
+});
+
+</script>
+</body>
+</html>
