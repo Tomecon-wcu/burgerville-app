@@ -1,0 +1,1062 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Clash of Clans</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  /* Layout: Burgerville's student shell — centered 1040px content + 380px clan sidebar, stacking below 1100px.
+     Tokens copied from Burgerville.html so the new app reads as part of the same game. */
+  html { font-size: 18px; }
+  :root {
+    --bg: #FAF6EE; --panel: #ffffff; --ink: #1a1a2e; --muted: #5a5a72; --border: #e0dbd0;
+    --paper-line: #E4DCC8; --rust: #A6491F; --rust-dark: #7E3517; --sage: #5B7553; --gold: #B98A2E;
+    --loss-fill: rgba(176,58,46,0.14); --new-eq: #1d7a3a; --demand: #b03a2e; --supply: #2563a8; --old-eq: #8a8a9a; --margin-fill: rgba(91,117,83,0.16);
+    --given-bg: #EAF1F7; --given-border: #b9cfe0; --edit-bg: #EAF6EC; --edit-border: #a9d4ae;
+    --warn-bg: #FBF3E3; --good-bg: #F3F7F1; --bad-bg: #FBEEEC; --tint: #f0ece0;
+    --shadow: 0 4px 24px rgba(26,26,46,0.10); --radius: 12px;
+    --serif: Georgia, "Iowan Old Style", serif;
+    --sans: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: "SF Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; color: var(--ink); font-family: var(--serif);
+    background-color: var(--bg);
+    background-image: linear-gradient(var(--paper-line) 1px, transparent 1px), linear-gradient(90deg, var(--paper-line) 1px, transparent 1px);
+    background-size: 28px 28px;
+    padding-block: 18px 60px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .mock-banner { max-width: 1444px; margin: 0 auto 14px; font-family: var(--sans); font-size: 13px; color: var(--muted); background: var(--panel); border: 1px dashed var(--gold); border-radius: 8px; padding: 8px 12px; }
+  .mock-banner b { color: var(--rust); }
+
+  .brand-row { max-width: 1444px; margin: 0 auto 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+  .brand-row h1 { font-size: 30px; margin: 0; letter-spacing: .5px; }
+  .brand-row .sub { font-family: var(--sans); font-size: 14px; color: var(--muted); margin-top: 2px; }
+  .who { font-family: var(--sans); font-size: 14px; text-align: right; line-height: 1.5; }
+  .who .name { font-weight: 700; }
+  .who .clan-chip { display: inline-block; background: var(--rust); color: #fff; border-radius: 10px; padding: 1px 9px; font-size: 12px; font-weight: 700; letter-spacing: .5px; }
+  .who button { margin-top: 4px; font-family: var(--sans); font-size: 13px; background: var(--panel); border: 1px solid var(--ink); border-radius: 14px; padding: 3px 12px; cursor: pointer; }
+
+  .masthead { max-width: 1040px; margin: 4px auto 12px; text-align: center; }
+  .kicker { font-family: var(--sans); font-size: 14px; text-transform: uppercase; letter-spacing: 2px; color: var(--rust); }
+  .masthead h2 { font-size: 28px; margin: 4px 0 2px; text-wrap: balance; }
+  .masthead .deadline { font-family: var(--sans); font-size: 15px; color: var(--muted); }
+
+  .tabs { max-width: 1040px; margin: 0 auto 16px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .tab-btn { font-family: var(--sans); font-size: 16px; font-weight: 700; padding: 10px 18px; border-radius: 8px; cursor: pointer;
+    background: var(--good-bg); border: 1.5px solid var(--sage); color: var(--sage); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+  .tab-btn small { font-weight: 400; font-size: 13px; opacity: .85; }
+  .tab-btn:hover { background: var(--sage); color: #fff; }
+  .tab-btn.active { background: var(--rust); border-color: var(--rust-dark); color: #fff; }
+  .tab-btn:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+  .page { max-width: 1444px; margin: 0 auto; display: flex; gap: 24px; align-items: flex-start; }
+  .main { flex: 1 1 1040px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  .side { flex: 0 0 380px; position: sticky; top: 12px; display: flex; flex-direction: column; gap: 16px; }
+  @media (max-width: 1100px) { .page { flex-direction: column; align-items: stretch; } .side { position: static; flex-basis: auto; width: 100%; } }
+
+  .card { background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); padding: 16px 18px; min-width: 0; }
+  .card h3 { font-size: 1rem; margin: 0 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 7px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .card h3 .aside { font-family: var(--sans); font-size: 13px; font-weight: 400; color: var(--muted); }
+  .row2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; }
+  @media (max-width: 760px) { .row2 { grid-template-columns: minmax(0,1fr); } }
+
+  .event-panel { border-radius: 8px; padding: 14px 16px; background: var(--warn-bg); border: 1px solid var(--gold); }
+  .event-label { font-family: var(--sans); font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--gold); margin-bottom: 4px; font-weight: 700; }
+  .event-text { font-family: var(--sans); font-size: 17px; line-height: 1.5; }
+
+  .sans { font-family: var(--sans); }
+  .note { font-family: var(--sans); font-size: 13px; color: var(--muted); line-height: 1.5; }
+  table.t { width: 100%; border-collapse: collapse; font-family: var(--sans); font-size: 15px; }
+  table.t th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  table.t td { padding: 6px 6px; border-bottom: 1px dashed var(--paper-line); font-variant-numeric: tabular-nums; }
+  table.t .num { text-align: right; }
+  table.t tr.mine { background: var(--warn-bg); font-weight: 700; }
+  table.t tr.changed td { background: var(--warn-bg); }
+  .delta-up { color: var(--new-eq); font-weight: 600; } .delta-down { color: var(--demand); font-weight: 600; }
+  .scroll-x { overflow-x: auto; }
+
+  .bar-track { height: 10px; background: var(--tint); border-radius: 5px; overflow: hidden; min-width: 60px; }
+  .bar-fill { height: 100%; background: var(--sage); }
+  .bar-fill.mine { background: var(--rust); }
+
+  /* Planner grid — mirrors the Firm Dashboard's given (blue) / editable (green) cells */
+  table.sheet { border-collapse: collapse; font-family: var(--sans); font-size: 14px; width: 100%; }
+  table.sheet th { background: var(--tint); color: var(--muted); font-size: 11.5px; font-weight: 600; padding: 3px 6px; border: 1px solid var(--border); text-align: center; }
+  table.sheet td { border: 1px solid var(--border); padding: 4px 8px; font-variant-numeric: tabular-nums; }
+  table.sheet td.lbl { color: var(--ink); }
+  table.sheet td.given { background: var(--given-bg); border-color: var(--given-border); text-align: right; }
+  table.sheet td.edit { background: var(--edit-bg); border-color: var(--edit-border); padding: 0; }
+  table.sheet td.edit input { width: 100%; border: 0; background: transparent; font: inherit; text-align: right; padding: 4px 8px; }
+  table.sheet td.calc { text-align: right; font-weight: 600; }
+  table.sheet td.sect { background: var(--tint); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 700; }
+  .neg { color: var(--demand); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-family: var(--sans); font-size: 13px; color: var(--muted); margin-top: 10px; }
+  .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 5px; border: 1px solid; }
+
+  /* Submit form */
+  .field { display: flex; flex-direction: column; gap: 4px; font-family: var(--sans); margin-bottom: 14px; }
+  .field label { font-weight: 700; font-size: 15px; }
+  .field .hint { font-size: 13px; color: var(--muted); }
+  .field input { font-family: var(--sans); font-size: 18px; padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-variant-numeric: tabular-nums; max-width: 360px; width: 100%; }
+  .field .cap-msg { font-size: 13px; color: var(--rust); font-weight: 600; min-height: 18px; }
+  .btn { font-family: var(--sans); font-size: 16px; font-weight: 700; border-radius: 8px; padding: 10px 20px; cursor: pointer; border: 1.5px solid var(--rust-dark); background: var(--rust); color: #fff; }
+  .btn.secondary { background: var(--panel); color: var(--ink); border-color: var(--ink); font-weight: 600; }
+  .btn.small { font-size: 13px; padding: 5px 12px; }
+  .match-q { min-width: 0; border: 1.5px solid var(--gold); background: var(--warn-bg); border-radius: 8px; padding: 10px 14px 12px; margin: 0 0 14px; font-family: var(--sans); display: flex; flex-direction: column; gap: 6px; max-width: 620px; }
+  .match-q legend { font-weight: 700; font-size: 15px; padding: 0 4px; }
+  .match-q label { font-size: 15px; display: flex; gap: 8px; align-items: flex-start; }
+  .match-q .hint { font-size: 13px; color: var(--muted); }
+  .status-ok { font-family: var(--sans); font-size: 14px; color: var(--sage); background: var(--good-bg); border: 1px solid var(--sage); border-radius: 8px; padding: 8px 12px; }
+
+  .season-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .season-btn { font-family: var(--sans); font-size: 15px; font-weight: 600; padding: 7px 14px; border-radius: 20px; border: 1px solid var(--ink); background: var(--panel); color: var(--ink); cursor: pointer; }
+  .season-btn.active { background: var(--rust); border-color: var(--rust-dark); color: #fff; }
+  .season-btn.locked { background: #EDE8DA; color: var(--muted); border-color: var(--paper-line); cursor: not-allowed; }
+
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat { font-family: var(--sans); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .stat .k { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+  .stat .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .s { font-size: 12px; color: var(--muted); }
+  .points { color: var(--rust); font-weight: 700; }
+
+  /* Clan panel */
+  .plan-figure { font-family: var(--sans); font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .plan-meta { font-family: var(--sans); font-size: 13px; color: var(--muted); }
+  .plan-edit { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .plan-edit input { font-family: var(--sans); font-size: 15px; padding: 6px 10px; border: 1.5px solid var(--edit-border); background: var(--edit-bg); border-radius: 6px; flex: 1 1 160px; min-width: 0; }
+  .chat-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+  .chat-tab { font-family: var(--sans); font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 14px; border: 1px solid var(--sage); background: var(--good-bg); color: var(--sage); cursor: pointer; }
+  .chat-tab.active { background: var(--sage); color: #fff; }
+  .chat-tab.off { border-color: var(--paper-line); background: #EDE8DA; color: var(--muted); }
+  .monitor { font-family: var(--sans); font-size: 12px; color: var(--muted); background: var(--tint); border-radius: 6px; padding: 5px 8px; margin-bottom: 8px; }
+  .msgs { height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+  .msg { font-family: var(--sans); font-size: 14px; line-height: 1.4; }
+  .msg .who-line { font-size: 12px; color: var(--muted); }
+  .msg .who-line b { color: var(--ink); }
+  .msg .bubble { background: var(--tint); border-radius: 8px; padding: 6px 10px; margin-top: 2px; }
+  .msg.me .bubble { background: var(--edit-bg); }
+  .msg.removed .bubble { font-style: italic; color: var(--muted); background: transparent; border: 1px dashed var(--border); }
+  .chat-input { display: flex; gap: 6px; margin-top: 10px; }
+  .chat-input input { flex: 1; min-width: 0; font-family: var(--sans); font-size: 14px; padding: 8px 10px; border: 1.5px solid var(--border); border-radius: 8px; }
+  .chat-off { font-family: var(--sans); font-size: 14px; color: var(--muted); font-style: italic; padding: 20px 8px; text-align: center; }
+
+  svg text { font-family: var(--sans); }
+  /* Planner spreadsheet — copied from Burgerville's Firm Dashboard grid styles */
+  .p-check { font-family: var(--sans); font-size: 14px; margin-top: 10px; min-height: 20px; }
+  td.warn .cell-inner { color: var(--demand); }
+  .formula-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-family: var(--sans); flex-wrap: wrap; }
+  .formula-bar .cell-ref { font-family: var(--mono); font-weight: 700; font-size: 15px; background: var(--tint); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; min-width: 52px; text-align: center; }
+  .formula-bar input { flex: 1 1 260px; min-width: 0; font-family: var(--mono); font-size: 16px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 4px; }
+  .formula-bar input:disabled { background: #f5f2ea; color: var(--muted); }
+  .formula-bar .status { font-size: 14px; color: var(--rust); font-weight: 600; }
+  .grid-scroll { overflow: auto; border: 1px solid var(--border); border-radius: 4px; }
+  table.sheet-grid { border-collapse: collapse; font-family: var(--sans); font-size: 14px; table-layout: fixed; }
+  table.sheet-grid th.colhead, table.sheet-grid th.rowhead { background: var(--tint); color: var(--muted); font-weight: 600; font-size: 11.5px; padding: 2px 4px; border: 1px solid var(--border); text-align: center; }
+  table.sheet-grid td { border: 1px solid var(--border); padding: 0; height: 26px; }
+  .sheet-grid .cell-inner { padding: 3px 6px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; justify-content: flex-end; }
+  td.label .cell-inner, td.sub .cell-inner { justify-content: flex-start; white-space: normal; font-size: 12.5px; line-height: 1.3; }
+  td.sub .cell-inner { font-weight: 700; color: var(--rust); }
+  td.section-header .cell-inner { justify-content: flex-start; font-family: var(--serif); font-weight: 700; font-size: 14px; }
+  td.hint-text .cell-inner { justify-content: flex-start; color: var(--muted); font-size: 12px; font-style: italic; white-space: normal; line-height: 1.3; }
+  td.given { background: var(--given-bg); cursor: pointer; }
+  td.editable { background: var(--edit-bg); cursor: text; }
+  td.editable .cell-inner { font-weight: 600; }
+  td.editable.empty { background: repeating-linear-gradient(45deg, var(--edit-bg), var(--edit-bg) 6px, #dcefdf 6px, #dcefdf 8px); }
+  td.selected { outline: 2px solid var(--rust); outline-offset: -2px; }
+  td.neg .cell-inner { color: var(--demand); }
+  .stackp { display: flex; flex-direction: column; gap: 16px; }
+  .stackp[hidden] { display: none; }
+  .guide { font-family: var(--sans); font-size: 15px; line-height: 1.5; margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+  .profit-readout { display: flex; gap: 26px; flex-wrap: wrap; margin-top: 12px; font-family: var(--sans); }
+  .profit-readout .k { color: var(--muted); display: block; font-size: 13px; }
+  .profit-readout .v { font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .pos { color: var(--new-eq); }
+  code { font-family: var(--mono); font-size: .9em; background: var(--tint); padding: 1px 4px; border-radius: 3px; }
+
+  /* v6: vote and split/steal */
+  .clock { font-variant-numeric: tabular-nums; }
+  .dm-readout { font-family: var(--sans); font-size: 19px; line-height: 1.45; background: var(--warn-bg); border: 1px solid var(--gold); border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; }
+  .dm-readout .lead { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--gold); font-weight: 700; display: block; margin-bottom: 2px; }
+  .dm-readout .sub { font-size: 14px; color: var(--muted); }
+  .mock-steps { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .mock-bar { max-width: 1444px; margin: -4px auto 16px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-family: var(--sans); font-size: 13px; background: var(--warn-bg); border: 1px dashed var(--gold); border-radius: 8px; padding: 8px 12px; }
+  .mb-label { color: var(--muted); }
+  .req-tag, .sent-tag { display: inline-block; font-family: var(--sans); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; border-radius: 10px; padding: 2px 8px; margin-right: 4px; vertical-align: 1px; }
+  .req-tag { background: var(--rust); color: #fff; }
+  .sent-tag { background: var(--good-bg); color: var(--sage); border: 1px solid var(--sage); }
+  .vote-wrap { max-width: 1444px; margin: 24px auto 0; }
+  .team-feed { flex-direction: row; flex-wrap: wrap; max-height: none; align-items: flex-start; align-content: flex-start; }
+  .team-feed .fmsg { flex: 1 1 180px; }
+  .team-feed > .note { flex-basis: 100%; }
+  .linkbtn { font: inherit; font-weight: 700; color: var(--rust); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+  .mb-now b { color: var(--rust); }
+  .mb-next { font-family: var(--sans); font-size: 14px; font-weight: 700; padding: 6px 14px; border-radius: 8px; border: 1.5px solid var(--gold); background: var(--gold); color: #fff; cursor: pointer; }
+  .mb-next:disabled { opacity: .5; cursor: default; }
+  .mb-jump { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; color: var(--muted); }
+  .mstep { font-family: var(--sans); font-size: 12px; padding: 4px 10px; border-radius: 12px; border: 1px solid var(--gold); background: var(--warn-bg); color: var(--ink); cursor: pointer; }
+  .mstep.on { background: var(--gold); color: #fff; }
+  .steps-bar { display: flex; gap: 8px; flex-wrap: wrap; font-family: var(--sans); }
+  .stp { flex: 1 1 140px; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; background: var(--panel); border: 1px solid var(--border); color: var(--muted); font-weight: 600; font-size: 14px; }
+  .stp .n { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--tint); font-size: 13px; }
+  .stp.on { border-color: var(--rust); color: var(--rust); }
+  .stp.on .n { background: var(--rust); color: #fff; }
+  .stp.done { color: var(--sage); }
+  .stp.done .n { background: var(--sage); color: #fff; }
+  .vote-grid, .ss-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+  .played { max-width: 640px; margin: 0 auto; }
+  .ss-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (max-width: 900px) { .vote-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 640px) { .vote-grid, .ss-grid { grid-template-columns: minmax(0, 1fr); } }
+  .vote, .ss { font-family: var(--sans); text-align: left; display: flex; flex-direction: column; gap: 3px; padding: 14px 16px; border-radius: 10px; border: 2px solid var(--border); background: var(--panel); color: var(--ink); cursor: pointer; }
+  .vote:hover, .ss:hover { border-color: var(--sage); }
+  .vote.sel { border-color: var(--rust); background: var(--warn-bg); }
+  .ss.split.sel { border-color: var(--sage); background: var(--good-bg); }
+  .ss.steal.sel { border-color: var(--demand); background: var(--bad-bg); }
+  .vt { font-weight: 700; font-size: 17px; }
+  .vq { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .vs { font-size: 13px; color: var(--muted); }
+  .tally { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; font-family: var(--sans); font-size: 14px; }
+  .trow { display: grid; grid-template-columns: 120px minmax(0, 1fr) 24px; gap: 10px; align-items: center; }
+  .tn { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .plan-set { font-family: var(--sans); font-size: 16px; background: var(--good-bg); border: 1px solid var(--sage); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; }
+  .status-miss { font-family: var(--sans); font-size: 15px; color: var(--demand); background: var(--bad-bg); border: 1px solid var(--demand); border-radius: 8px; padding: 10px 14px; line-height: 1.5; }
+  .side-status { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; font-family: var(--sans); }
+  .side-line { font-size: 14px; }
+  .over { color: var(--demand); font-weight: 700; }
+
+  /* v10: vote on the Market tab, pre-built market and team messages */
+  .plan-in { display: flex; gap: 20px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; margin-bottom: 14px; }
+  .plan-last { width: auto; min-width: 260px; flex: 0 1 340px; }
+  .vote-q { font-size: 17px; font-weight: 700; margin: 4px 0 10px; }
+  .gate { font-family: var(--sans); font-size: 14px; background: var(--warn-bg); border: 1.5px solid var(--gold); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
+  .vote.locked, .ss.locked { opacity: .45; cursor: not-allowed; }
+  .vote.locked:hover, .ss.locked:hover { border-color: var(--border); }
+  .flash { animation: flash 1s ease; }
+  @keyframes flash { 0%, 100% { box-shadow: var(--shadow); } 30% { box-shadow: 0 0 0 4px var(--gold); } }
+  @media (prefers-reduced-motion: reduce) { .flash { animation: none; outline: 3px solid var(--gold); } }
+  .chat-card.req { border: 2px solid var(--gold); }
+  .opt-row { display: flex; flex-direction: column; gap: 6px; }
+  .opt-row.two { flex-direction: row; }
+  .opt-row.two .opt { flex: 1; }
+  .opt { font-family: var(--sans); font-size: 14px; font-weight: 600; text-align: left; padding: 8px 12px; border-radius: 8px; border: 1.5px solid var(--sage); background: var(--good-bg); color: var(--sage); cursor: pointer; }
+  .opt:hover:not(:disabled) { background: var(--sage); color: #fff; }
+  .opt.sel { background: var(--rust); border-color: var(--rust-dark); color: #fff; }
+  .opt:disabled { opacity: .5; cursor: default; }
+  .mkt-lead { margin-top: 12px; background: var(--ink); color: #fff; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; font-family: var(--sans); }
+  .ml-k { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--gold); font-weight: 700; }
+  .ml-v { font-family: var(--serif); font-size: 20px; font-weight: 700; line-height: 1.25; }
+  .ml-n { font-size: 13px; opacity: .8; }
+  .mkt-bars { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; font-family: var(--sans); font-size: 13px; }
+  .mrow { display: grid; grid-template-columns: 130px minmax(0, 1fr) 24px; gap: 8px; align-items: center; color: var(--muted); }
+  .mrow.top { color: var(--ink); font-weight: 700; }
+  .bar-fill.lead { background: var(--ink); }
+  .feed { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; font-family: var(--sans); font-size: 13px; max-height: 210px; overflow-y: auto; }
+  .fmsg { background: var(--tint); border-radius: 8px; padding: 6px 10px; }
+  .fmsg.me { background: var(--edit-bg); }
+  .fmsg.steal div { color: var(--demand); font-weight: 600; }
+  .fmsg.split div { color: var(--sage); font-weight: 600; }
+  .todo { display: flex; gap: 8px; align-items: baseline; font-family: var(--sans); font-size: 14px; color: var(--muted); }
+  .todo span { width: 16px; text-align: center; font-weight: 700; }
+  .todo.ok { color: var(--ink); }
+  .todo.ok span { color: var(--sage); }
+
+  .signin { max-width: 460px; margin: 60px auto; }
+  .signin input { width: 100%; font-family: var(--sans); font-size: 17px; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; margin: 8px 0 12px; }
+  .notice { max-width: 640px; margin: 60px auto; }
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 40; max-width: min(92vw, 560px); font-family: var(--sans); font-size: 15px; background: var(--ink); color: #fff; border-radius: 8px; padding: 10px 16px; box-shadow: var(--shadow); }
+  .wait-card { font-family: var(--sans); font-size: 16px; line-height: 1.5; }
+
+  .deadline { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; width: fit-content; max-width: 100%; margin: 0 auto 14px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 2px 12px; text-align: center; font-family: var(--sans); font-size: 15px; color: var(--ink); background: var(--panel); border: 2px solid var(--rust); border-radius: 10px; padding: 4px 18px; box-shadow: var(--shadow); }
+  .deadline:empty { display: none; }
+  .deadline .clock { font-size: 44px; line-height: 1.1; font-weight: 800; color: var(--rust); font-variant-numeric: tabular-nums; }
+  .deadline .clock.low { color: var(--demand); }
+  .quick { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; font-family: var(--sans); }
+  .quick-k { font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+  .quick-row { display: flex; flex-wrap: wrap; gap: 5px; }
+  .qc { font-family: var(--sans); font-size: 13px; line-height: 1.3; text-align: left; padding: 5px 10px; border-radius: 12px; border: 1px solid var(--sage); background: var(--good-bg); color: var(--ink); cursor: pointer; }
+  .qc:hover:not(:disabled) { background: var(--sage); color: #fff; }
+  .qc:disabled { opacity: .5; }
+  .msgs { height: 200px; }
+  button:disabled { cursor: not-allowed; }
+  .chat-input input:disabled { background: var(--tint); }
+  @media (max-width: 1100px) { .msgs { height: 220px; } .main { flex: 0 0 auto; width: 100%; } }
+  @media (max-width: 700px) { #dmChart { min-width: 640px; } }
+</style>
+</head>
+<body>
+<div id="signInScreen" class="card signin" hidden>
+  <h3>Clash of Clans</h3>
+  <p class="sans" style="margin:0 0 6px">Sign in with your WCU email.</p>
+  <form id="signInForm">
+    <input id="loginEmail" type="email" autocomplete="email" placeholder="you@wcupa.edu" aria-label="WCU email">
+    <button class="btn" type="submit" id="loginBtn">Sign in</button>
+  </form>
+  <p class="note" id="loginStatus" role="status" style="min-height:20px;margin:10px 0 0"></p>
+</div>
+
+<div id="noticeScreen" class="card notice" hidden>
+  <h3 id="noticeTitle"></h3>
+  <p class="sans" id="noticeText" style="margin:0 0 14px"></p>
+  <button class="btn secondary small" type="button" id="noticeSignOut">Sign out</button>
+</div>
+
+<div id="app" hidden>
+  <div class="brand-row">
+    <div>
+      <h1>Clash of Clans</h1>
+      <div class="sub" id="gameSub"></div>
+    </div>
+    <div class="who">
+      <div><span class="name" id="whoName"></span> · <span id="whoTeam"></span></div>
+      <div>Clan <span class="clan-chip" id="whoClan"></span></div>
+      <button type="button" id="signOutBtn">Sign out</button>
+    </div>
+  </div>
+
+  <div class="masthead">
+    <div class="kicker" id="phaseKicker"></div>
+    <h2 id="roundName"></h2>
+  </div>
+  <div class="deadline" id="phaseDeadline"></div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab-btn active" data-tab="market" type="button">Market<small>News &amp; history</small></button>
+    <button class="tab-btn" data-tab="decide" type="button">Decide<small>Clan vote, then firm decision</small></button>
+    <button class="tab-btn" data-tab="results" type="button">Results<small id="resultsTabNote">None yet</small></button>
+  </div>
+
+  <div class="card wait-card" id="waitCard" style="max-width:640px;margin:0 auto" hidden></div>
+
+  <div class="page" id="mainPage">
+    <div class="main">
+      <section data-pane="market" class="pane stackp">
+        <div class="event-panel">
+          <div class="event-label" id="newsLabel"></div>
+          <div class="event-text" id="newsText"></div>
+        </div>
+
+        <div class="card">
+          <h3>Demand and average total cost <span class="aside" id="chartAside"></span></h3>
+          <div class="dm-readout" id="dmReadout" aria-live="polite"></div>
+          <p class="note" id="chartHint" style="margin:0 0 6px"></p>
+          <div class="scroll-x"><svg id="dmChart" viewBox="0 0 900 400" width="100%" role="img" aria-label="Demand and average total cost"></svg></div>
+          <div class="legend" id="dmLegend"></div>
+        </div>
+
+        <div class="card" id="lastTotalsCard">
+          <h3><span id="lastTotalsTitle"></span> <span class="aside" id="lastTotalsAside"></span></h3>
+          <div class="scroll-x"><table class="t">
+            <thead><tr><th>Clan</th><th class="num">Output (billion lb)</th><th>Share</th></tr></thead>
+            <tbody id="clanTotalsMarket"></tbody>
+          </table></div>
+          <p class="note" id="lastTotalsNote" style="margin:10px 0 0"></p>
+        </div>
+      </section>
+
+      <section data-pane="decide" class="pane stackp" hidden>
+        <div class="steps-bar">
+          <div class="stp" id="stp1"><span class="n">1</span>Clan vote</div>
+          <div class="stp" id="stp2"><span class="n">2</span>Firm decision</div>
+          <div class="stp" id="stp3"><span class="n">3</span><span id="stp3Label"></span></div>
+        </div>
+
+        <div class="card" id="dVote" hidden>
+          <h3>Step 1 · Clan vote <span class="aside">Closes in <b class="clock" data-clock="vote"></b></span></h3>
+          <p class="sans" id="dVoteText" style="margin:0 0 12px"></p>
+          <div id="decideVoteStatus"></div>
+          <div style="margin-top:10px"><button class="btn" type="button" data-goto="market">Go to the clan vote</button></div>
+        </div>
+
+        <div class="card chat-card" id="teamCard" hidden>
+          <h3>Team chat <span class="aside" id="teamAside"></span></h3>
+          <div class="note" id="teamIntro" style="margin:-4px 0 8px"></div>
+          <div class="opt-row two">
+            <button type="button" class="opt" data-team="split">We should split</button>
+            <button type="button" class="opt" data-team="steal">We should steal</button>
+          </div>
+          <div class="feed team-feed" id="teamFeed"></div>
+        </div>
+
+        <div class="card" id="dFirm" hidden>
+          <h3>Step 2b · Firm decision <span class="aside" id="firmAside"></span></h3>
+          <div class="plan-set" id="planSet"></div>
+          <div class="gate" id="teamGate"><b>No message, no points.</b> Send a <b>team chat</b> message to your teammates first (above). Your firm decision opens once you've sent it.</div>
+          <div class="ss-grid">
+            <button type="button" class="ss split" data-ss="split"><span class="vt">Split</span><span class="vq" id="splitQ"></span><span class="vs">Produce your share of the plan</span></button>
+            <button type="button" class="ss steal" data-ss="steal"><span class="vt">Steal</span><span class="vq" id="stealQ"></span><span class="vs" id="stealNote"></span></button>
+          </div>
+          <p class="note" id="firmNote" style="margin:12px 0 0"></p>
+          <div style="margin-top:12px"><button class="btn" type="button" id="ssConfirm" disabled>Confirm my choice</button> <span class="note" id="ssMsg"></span></div>
+        </div>
+
+        <div class="card" id="dDone" hidden>
+          <h3 id="doneTitle"></h3>
+          <div class="status-ok" id="doneText"></div>
+          <div style="margin-top:12px"><button class="btn secondary small" type="button" id="changeChoice">Change my choice</button></div>
+        </div>
+
+        <div class="card" id="dNotice" hidden>
+          <h3 id="dNoticeTitle"></h3>
+          <div id="dNoticeText"></div>
+        </div>
+      </section>
+
+      <section data-pane="results" class="pane stackp" hidden>
+        <div class="card" id="resEmpty" hidden><p class="sans" style="margin:0">Results appear here after the first round runs.</p></div>
+        <div id="resBody" class="stackp">
+          <div class="card">
+            <div class="season-row" id="resSeasons"></div>
+          </div>
+          <div class="card">
+            <h3>Market outcome <span class="aside" id="resName"></span></h3>
+            <div class="stat-row" id="resStats"></div>
+            <div class="scroll-x" style="margin-top:12px"><table class="t">
+              <thead><tr><th id="resBenchHead"></th><th class="num">Value</th></tr></thead>
+              <tbody id="resBench"></tbody>
+            </table></div>
+          </div>
+          <div class="row2">
+            <div class="card">
+              <h3 id="resMineTitle"></h3>
+              <div class="scroll-x"><table class="t"><tbody id="resMine"></tbody></table></div>
+            </div>
+            <div class="card">
+              <h3>Clan totals</h3>
+              <div class="scroll-x"><table class="t"><thead><tr><th>Clan</th><th class="num">Plan (billion lb)</th><th class="num">Actual (billion lb)</th></tr></thead><tbody id="resClans"></tbody></table></div>
+              <p class="note" style="margin:8px 0 0">You see only your own clan's plan.</p>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Team leaderboard <span class="aside" id="resPointsRule"></span></h3>
+            <div class="scroll-x"><table class="t">
+              <thead><tr><th>#</th><th>Team</th><th>Clan</th><th class="num">Avg profit per member</th><th class="num">Points</th></tr></thead>
+              <tbody id="resLeader"></tbody>
+            </table></div>
+            <p class="note" style="margin:8px 0 0">A team shows here when at least 2 members took part; every team is still ranked. <span id="resEndNote"></span></p>
+            <p class="note" id="lengthNote" style="margin:4px 0 0" hidden></p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="side" id="sidePanel">
+      <div class="card chat-card" id="mktCard">
+        <h3>Market message <span class="aside" id="mktAside"></span></h3>
+        <div class="note" id="mktIntro" style="margin:-4px 0 8px"></div>
+        <div class="opt-row" id="mktOpts"></div>
+        <div class="mkt-lead" id="mktLead"></div>
+        <div class="mkt-bars" id="mktBars"></div>
+        <div class="feed" id="mktFeed"></div>
+      </div>
+
+      <div class="card chat-card" id="clanCard">
+        <h3>Clan chat <span class="aside" id="clanAside"></span></h3>
+        <div class="monitor" id="clanMonitor"></div>
+        <div class="msgs" id="msgs"></div>
+        <div class="quick" id="quickComments"></div>
+        <form class="chat-input" id="chatForm">
+          <input id="chatText" maxlength="500" autocomplete="off" aria-label="Message to your clan">
+          <button class="btn small" type="submit" id="chatSend">Send</button>
+        </form>
+      </div>
+    </aside>
+  </div>
+
+  <div class="vote-wrap" id="voteWrap">
+    <div class="card vote-card" id="voteCard">
+      <h3><span id="voteTitle"></span> <span class="aside" id="voteAside"></span></h3>
+      <div class="plan-in">
+        <div>
+          <div class="note" id="planInLabel"></div>
+          <div class="plan-figure" id="planInFigure"></div>
+          <div class="note" id="planInShare"></div>
+        </div>
+        <table class="t plan-last" id="planLast"><tbody id="planLastBody"></tbody></table>
+      </div>
+      <div id="voteOpen">
+        <div class="gate" id="voteGate"></div>
+        <div class="sans vote-q" id="voteQ"></div>
+        <div class="vote-grid" id="voteGrid"></div>
+        <div class="tally" id="tally"></div>
+        <p class="note" id="voteNote" style="margin:10px 0 0"></p>
+      </div>
+      <div class="status-miss" id="voteStateNote" hidden></div>
+      <div id="voteDone" hidden>
+        <div class="plan-set" id="planSetMarket"></div>
+        <button class="btn" type="button" data-goto="decide" id="toFirm">Go to your firm decision</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="alert" hidden></div>
+
+<script>
+/* Clash of Clans student page. All numbers come from the database; nothing here decides a score. */
+const SUPABASE_URL = 'https://oxhojojzwvnfzsfpybyf.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94aG9qb2p6d3ZuZnpzZnB5YnlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2OTQzNTksImV4cCI6MjEwMDI3MDM1OX0.USn_IYs5LUBi8xk0kzR85l-miSiMH8U0soms7QzZpmk';
+// Its own storageKey, so a Burgerville session in another tab is neither signed out nor crossed over.
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storageKey: 'coc-student-auth' } });
+
+const POLL_MS = 3000;
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = v => (v == null ? null : Number(v));
+const fmt = n => Math.round(n).toLocaleString('en-US');
+const money = n => (n < 0 ? '−$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US');
+const price = n => '$' + Number(n).toFixed(2);
+const bil = n => (Math.round(n / 1e8) / 10).toFixed(1);
+const pts = n => { const v = Number(n); return Number.isInteger(v) ? String(v) : String(Number(v.toFixed(3))); };
+const VOTE_KEYS = ['down2', 'down', 'same', 'up', 'up2'];
+const MKT_KEYS = ['cut2', 'cut', 'pat', 'up', 'up2'];
+const TEAM_TEXT = { split: 'We should split', steal: 'We should steal' };
+
+let gameId = null, S = null, R = null, resultsVersion = null, viewRound = null;
+let clockOffset = 0, pollTimer = null, activeTab = 'market', lastAutoKey = null, lastFetchAt = 0;
+let picked = null, changing = false, busy = false, chatKey = '', chartKey = '';
+
+/* ---------- small helpers ---------- */
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => { t.hidden = true; }, 5000);
+}
+function unit(lower) { const u = S && S.game.pace === 'over_days' ? 'Season' : 'Round'; return lower ? u.toLowerCase() : u; }
+function voteLabel(k) {
+  const g = S.game;
+  return { down2: `Cut ${pts(g.step_large)}%`, down: `Cut ${pts(g.step_small)}%`, same: 'No change', up: `Increase ${pts(g.step_small)}%`, up2: `Increase ${pts(g.step_large)}%` }[k];
+}
+function voteMult(k) {
+  const g = S.game, sm = Number(g.step_small) / 100, lg = Number(g.step_large) / 100;
+  return { down2: 1 - lg, down: 1 - sm, same: 1, up: 1 + sm, up2: 1 + lg }[k];
+}
+function clockText(ms) {
+  const t = Math.max(0, Math.floor(ms / 1000)), d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60), s = t % 60;
+  if (d) return d + 'd ' + h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  if (h) return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  return m + ':' + String(s).padStart(2, '0');
+}
+const serverNow = () => Date.now() + clockOffset;
+function tick() {
+  if (!S || !S.round) return;
+  const r = S.round, vote = new Date(r.vote_ends_at).getTime(), firm = new Date(r.firm_ends_at).getTime(), now = serverNow();
+  document.querySelectorAll('.clock').forEach(el => { const left = (el.dataset.clock === 'vote' ? vote : firm) - now; el.textContent = clockText(left); el.classList.toggle('low', left <= 10000); });
+  // Refresh as soon as a timer runs out, instead of waiting for the next poll.
+  if (((r.phase === 'vote' && now >= vote) || (r.phase === 'firm' && now >= firm)) && Date.now() - lastFetchAt > 1000) refresh();
+}
+
+async function rpc(name, args) {
+  const { data, error } = await sb.rpc(name, args);
+  if (error) throw error;
+  return data;
+}
+async function act(name, args) {
+  if (busy) return false;
+  busy = true;
+  try { await rpc(name, { p_game: gameId, ...args }); await refresh(); return true; }
+  catch (e) { toast(e.message || 'That did not go through. Please try again.'); await refresh().catch(() => {}); return false; }
+  finally { busy = false; }
+}
+
+/* ---------- screens ---------- */
+function show(which) {
+  $('signInScreen').hidden = which !== 'signin';
+  $('noticeScreen').hidden = which !== 'notice';
+  $('app').hidden = which !== 'app';
+}
+function notice(title, text) { $('noticeTitle').textContent = title; $('noticeText').textContent = text; show('notice'); }
+function stopPolling() { clearInterval(pollTimer); pollTimer = null; gameId = null; S = null; R = null; resultsVersion = null; }
+
+async function enter() {
+  try {
+    const j = await rpc('coc_join');
+    if (j.status === 'not_rostered') return notice('You are not on a Clash of Clans roster', 'Please check that you used the email your professor has on file, or contact your professor.');
+    if (j.status === 'no_open_game') return notice('The game is not open yet', 'Your instructor will open sign-in when your session begins. Please try again then.');
+    if (j.status === 'already_played') return notice("You've already played", `You took part in ${j.played_name}, so your points come from that session. You can't play ${j.game_name}. Your score email will arrive after your instructor sends final scores.`);
+    gameId = j.game_id;
+    show('app');
+    await refresh();
+    clearInterval(pollTimer);
+    pollTimer = setInterval(() => { if (!document.hidden) refresh().catch(() => {}); }, POLL_MS);
+  } catch (e) {
+    notice('We could not open the game', e.message || 'Please try again in a moment.');
+  }
+}
+
+async function refresh() {
+  if (!gameId) return;
+  lastFetchAt = Date.now();
+  const st = await rpc('coc_student_state', { p_game: gameId });
+  S = st;
+  clockOffset = new Date(S.now).getTime() - Date.now();
+  if (S.results_version !== resultsVersion) {
+    resultsVersion = S.results_version;
+    R = await rpc('coc_student_results', { p_game: gameId });
+    if (R.rounds.length) viewRound = R.rounds[R.rounds.length - 1].round; else viewRound = null;
+    renderResults();
+  }
+  render();
+}
+
+/* ---------- main render ---------- */
+function setTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+  document.querySelectorAll('.pane').forEach(p => { p.hidden = p.dataset.pane !== tab; });
+  $('voteWrap').hidden = tab !== 'market' || !S || !S.round || (S.round.phase === 'ran');
+  if (tab === 'market') chartKey = '';
+  if (tab === 'market' && S && S.round) drawChart();
+}
+
+function stage() {
+  // Which Decide screen this student sees. Null means there is no round in play.
+  if (!S.round) return null;
+  const ph = S.round.phase, my = S.my;
+  if (ph === 'ran') return 'ran';
+  if (S.me.muted) return 'muted';
+  if (ph === 'vote') return 'vote';
+  if (!my.in_round) return 'late';
+  if (!my.vote) return 'missed';
+  return 'firm';
+}
+
+function render() {
+  const g = S.game, me = S.me, r = S.round, st = stage();
+  $('gameSub').textContent = 'Burgerville Part IV · ' + g.name + (g.session_label ? ' · ' + g.session_label : '');
+  $('whoName').textContent = me.screen_name || '';
+  $('whoTeam').textContent = (me.team_name || me.team_brand || '') + (me.team_name && me.team_brand ? ` (${me.team_brand})` : '');
+  $('whoClan').textContent = (me.clan_name || '').toUpperCase();
+  const nRes = R ? R.rounds.length : 0;
+  $('resultsTabNote').textContent = nRes ? (nRes === 1 ? `${unit()} 1` : `${unit()}s 1–${nRes}`) : 'None yet';
+
+  const hasRound = !!r;
+  const started = hasRound;
+  $('waitCard').hidden = started;
+  document.querySelector('.tabs').hidden = !started;
+  $('mainPage').hidden = !started;
+  if (!started) {
+    $('phaseKicker').textContent = `${unit()} 1 hasn't started`;
+    $('roundName').textContent = 'Waiting for your instructor';
+    $('phaseDeadline').textContent = '';
+    $('waitCard').innerHTML = `You're signed in, on <b>${esc(me.team_name || me.team_brand)}</b> in clan <b>${esc(me.clan_name)}</b>. This page updates on its own when your instructor starts ${unit(true)} 1.`;
+    $('voteWrap').hidden = true;
+    return;
+  }
+
+  // Header
+  const n = r.number, U = unit();
+  $('roundName').textContent = r.name || `${U} ${n}`;
+  const kick = { vote: 'Clan vote open', firm: 'Firm decision', muted: 'Muted: counted as Split, 0 points', late: 'You start next ' + unit(true), missed: 'Vote missed: counted as Split, 0 points', ran: g.ended ? 'Game over' : 'Results are in' }[st];
+  $('phaseKicker').textContent = `${U} ${n} of ${g.rounds} · ${kick}`;
+  const wait = r.phase === 'wait';
+  $('phaseDeadline').innerHTML = r.phase === 'vote' ? 'Clan vote closes in <b class="clock" data-clock="vote"></b>'
+    : r.phase === 'firm' ? 'Clan vote closed · Firm decision closes in <b class="clock" data-clock="firm"></b>'
+    : wait ? "Time's up. Results are coming."
+    : g.ended ? 'See the Results tab for your final points.' : `See the Results tab. ${U} ${n + 1} starts when your instructor is ready.`;
+
+  renderMarket(); renderMktCard(); renderClanChat(); renderVote(st); renderDecide(st);
+
+  // Move students along when the phase changes, once per phase, so a short timer isn't lost at the bottom of a page.
+  const autoKey = `${n}-${r.phase}`;
+  if (lastAutoKey !== null && lastAutoKey !== autoKey) {
+    if (r.phase === 'firm') { setTab('decide'); window.scrollTo(0, 0); }
+    else if (r.phase === 'ran') { setTab('results'); window.scrollTo(0, 0); }
+    else if (r.phase === 'vote') { setTab('market'); window.scrollTo(0, 0); }
+  }
+  lastAutoKey = autoKey;
+  $('voteWrap').hidden = activeTab !== 'market' || r.phase === 'ran';
+  $('lastTotalsCard').hidden = !S.prev_market;
+  tick();
+}
+
+/* ---------- market tab ---------- */
+function renderMarket() {
+  const r = S.round, U = unit(), pm = S.prev_market;
+  $('newsLabel').textContent = `This ${unit(true)}'s news`;
+  $('newsText').textContent = r.news || 'No news.';
+  if (pm) {
+    $('lastTotalsTitle').textContent = `Last ${unit(true)}'s clan totals`;
+    $('lastTotalsAside').textContent = `${U} ${r.number - 1}`;
+    const maxT = Math.max(...S.prev_clans.map(c => Number(c.actual_q)), 1);
+    $('clanTotalsMarket').innerHTML = S.prev_clans.map(c => {
+      const me = c.clan_id === S.me.clan_id, v = Number(c.actual_q);
+      return `<tr class="${me ? 'mine' : ''}"><td>${esc(c.name)}</td><td class="num">${bil(v)}</td><td><div class="bar-track"><div class="bar-fill ${me ? 'mine' : ''}" style="width:${(v / maxT * 100).toFixed(0)}%"></div></div></td></tr>`;
+    }).join('');
+    $('lastTotalsNote').innerHTML = `Total output ${bil(pm.total_q)} billion lb, price <b>${price(pm.price)}</b>.`;
+  }
+  drawChart();
+}
+
+/* ---------- demand and average total cost chart ---------- */
+function drawChart() {
+  if (activeTab !== 'market' || !S.round) return;
+  const r = S.round, pv = S.prev_round, pm = S.prev_market, U = unit(), n = r.number, N = S.players, K = Math.max(1, S.clan_count);
+  const voted = S.plan && S.plan.closed && S.plan.plan_total != null;
+  // Clans can differ in size, so "every clan matches" means every player produces this clan's per-member share.
+  const planNow = Number(voted ? S.plan.plan_total : S.plan ? S.plan.plan_in : 0);
+  const memberCount = Math.max(1, voted ? S.plan.members : S.clan_members);
+  const baseMarket = planNow / memberCount * N;
+  const key = [n, r.q0, r.dqdp, r.mc, r.f, N, K, baseMarket, voted, pm ? pm.price : ''].join('|');
+  const lead = voted ? `${S.me.clan_name}’s plan from the vote, if every clan matches it` : `${S.me.clan_name}’s plan going in, if every clan matches it`;
+  if (key === chartKey) return;
+  chartKey = key;
+  const svg = $('dmChart');
+  const Q0 = Number(r.q0), b = Number(r.dqdp), MC = Number(r.mc), F = Number(r.f);
+  const atc = Q => MC + F * N / Q;
+  const pAt = (Q0x, bx, q) => Math.max(0, (Q0x - q) / bx);
+  const maxQ0 = Math.max(Q0, pv ? Number(pv.q0) : 0);
+  const qMax = Math.ceil(maxQ0 * 1.08 / 5e9) * 5e9;
+  const pTop = Math.max(Q0 / b, pv ? Number(pv.q0) / Number(pv.dqdp) : 0);
+  const pMax = Math.ceil(pTop * 1.1 / 2) * 2;
+  const L = 70, Rt = 880, T = 16, B = 340;
+  const x = q => L + q / qMax * (Rt - L), y = p => B - Math.min(p, pMax) / pMax * (B - T);
+  let h = '';
+  const pStep = pMax > 30 ? 5 : 2;
+  for (let p = 0; p <= pMax; p += pStep) h += `<line x1="${L}" x2="${Rt}" y1="${y(p)}" y2="${y(p)}" stroke="var(--paper-line)"/><text x="${L - 8}" y="${y(p) + 4}" text-anchor="end" font-size="12" fill="var(--muted)">$${p}</text>`;
+  for (let q = 0; q <= qMax; q += 5e9) h += `<text x="${x(q)}" y="${B + 20}" text-anchor="middle" font-size="12" fill="var(--muted)">${q / 1e9}B</text>`;
+  h += `<text x="${(L + Rt) / 2}" y="${B + 44}" text-anchor="middle" font-size="13" font-weight="600" fill="var(--ink)">Total market output (billion lb)</text>`;
+  h += `<text transform="translate(18 ${(T + B) / 2}) rotate(-90)" text-anchor="middle" font-size="13" font-weight="600" fill="var(--ink)">Price per lb</text>`;
+  h += `<line x1="${L}" y1="${B}" x2="${Rt}" y2="${B}" stroke="var(--ink)"/><line x1="${L}" y1="${T}" x2="${L}" y2="${B}" stroke="var(--ink)"/>`;
+  // Loss region: where this round's demand lies below ATC at high output
+  const qs = []; const step = qMax / 180;
+  for (let q = Q0 * 0.4; q <= qMax; q += step) if (pAt(Q0, b, q) < atc(q)) qs.push(q);
+  let hasLoss = false;
+  if (qs.length > 1) {
+    hasLoss = true;
+    h += `<polygon points="${qs.map(q => `${x(q)},${y(atc(q))}`).join(' ')} ${qs.slice().reverse().map(q => `${x(q)},${y(pAt(Q0, b, q))}`).join(' ')}" fill="var(--loss-fill)"/>`;
+    const lq = qs[Math.floor(qs.length * 0.7)];
+    h += `<text x="${x(lq)}" y="${y((atc(lq) + pAt(Q0, b, lq)) / 2) + 4}" text-anchor="middle" font-size="13" font-weight="700" fill="var(--demand)">Losses</text>`;
+  }
+  // Last round's outcome: price minus ATC
+  let profitLabel = false;
+  if (pm) {
+    const lq = Number(pm.total_q), lp = Number(pm.price), la = Number(pm.avg_atc), top = Math.max(lp, la), bot = Math.min(lp, la);
+    profitLabel = true;
+    h += `<rect x="${x(0)}" y="${y(top)}" width="${x(lq) - x(0)}" height="${Math.max(0, y(bot) - y(top))}" fill="${lp >= la ? 'var(--margin-fill)' : 'var(--loss-fill)'}" stroke="none"/>`;
+    h += `<text x="${x(lq / 2)}" y="${y(top) - 8}" text-anchor="middle" font-size="13" font-weight="700" fill="${lp >= la ? 'var(--sage)' : 'var(--demand)'}">${U} ${n - 1}: price − ATC = ${lp < la ? '−' : ''}${price(Math.abs(lp - la))} per lb</text>`;
+  }
+  // ATC curve
+  const aq = []; const qStart = F * N / Math.max(1, pMax - MC);
+  for (let q = Math.max(qStart, qMax / 400); q <= qMax; q += qMax / 240) aq.push(`${x(q)},${y(atc(q))}`);
+  if (aq.length) h += `<polyline points="${aq.join(' ')}" fill="none" stroke="var(--supply)" stroke-width="2.5"/>`;
+  const labelQ = Math.max(qStart * 1.3, qMax * 0.03);
+  h += `<text x="${x(labelQ) + 6}" y="${y(atc(labelQ)) + 4}" font-size="13" font-weight="700" fill="var(--supply)">ATC</text>`;
+  // Demand curves
+  const curve = (q0, bx, color, dash, w) => `<line x1="${x(0)}" y1="${y(q0 / bx)}" x2="${x(q0)}" y2="${y(0)}" stroke="${color}" stroke-width="${w}" ${dash ? 'stroke-dasharray="6 5"' : ''}/>`;
+  if (pv) h += curve(Number(pv.q0), Number(pv.dqdp), 'var(--old-eq)', true, 2);
+  h += curve(Q0, b, 'var(--demand)', false, 3);
+  h += `<text x="${x(qMax * 0.06)}" y="${y(pAt(Q0, b, qMax * 0.06)) - 12}" font-size="13" font-weight="700" fill="var(--demand)">D (${U} ${n})</text>`;
+  if (pm) {
+    const lq = Number(pm.total_q), lp = Number(pm.price);
+    h += `<line x1="${x(lq)}" x2="${x(lq)}" y1="${y(lp)}" y2="${B}" stroke="var(--old-eq)" stroke-dasharray="3 3"/>`;
+    h += `<circle cx="${x(lq)}" cy="${y(lp)}" r="6" fill="var(--rust)" stroke="var(--panel)" stroke-width="2"/>`;
+    h += `<text x="${x(lq) + 10}" y="${y(lp) - 10}" font-size="13" font-weight="700" fill="var(--rust)">${U} ${n - 1}: ${price(lp)} at ${bil(lq)}B lb</text>`;
+  }
+  h += `<line id="dmHoverLine" x1="0" x2="0" y1="${T}" y2="${B}" stroke="var(--ink)" stroke-width="1" opacity="0"/><circle id="dmHoverDot" r="5" fill="var(--demand)" opacity="0"/>`;
+  h += `<rect id="dmHit" x="${L}" y="${T}" width="${Rt - L}" height="${B - T}" fill="transparent"/>`;
+  svg.innerHTML = h;
+  const hit = svg.querySelector('#dmHit'), hl = svg.querySelector('#dmHoverLine'), hd = svg.querySelector('#dmHoverDot'), out = $('dmReadout');
+  const read = (q, leadText) => {
+    q = Math.min(qMax, Math.max(0, q)); const p = pAt(Q0, b, q);
+    hl.setAttribute('x1', x(q)); hl.setAttribute('x2', x(q)); hl.setAttribute('opacity', .35);
+    hd.setAttribute('cx', x(q)); hd.setAttribute('cy', y(p)); hd.setAttribute('opacity', 1);
+    const a = atc(Math.max(q, 1e8)), m = p - a;
+    out.innerHTML = `<span class="lead">${esc(leadText)}</span>If each clan plans <b>${bil(q / K)} billion lb</b>, the ${U} ${n} price is <b>${price(p)}</b> and ATC is <b>${price(a)}</b>, so each lb ${m < 0 ? 'loses' : 'earns'} <b class="${m < 0 ? 'neg' : 'pos'}">${price(Math.abs(m))}</b>.<br><span class="sub">Market total: ${bil(q)} billion lb across ${K} clans.</span>`;
+  };
+  const show_ = evt => {
+    const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+    const loc = pt.matrixTransform(svg.getScreenCTM().inverse());
+    read((loc.x - L) / (Rt - L) * qMax, 'Trying another plan');
+  };
+  read(baseMarket, lead);
+  hit.addEventListener('mouseleave', () => read(baseMarket, lead));
+  hit.addEventListener('mousemove', show_);
+  hit.addEventListener('touchstart', e => show_(e.touches[0]), { passive: true });
+  hit.addEventListener('touchmove', e => show_(e.touches[0]), { passive: true });
+  $('chartAside').textContent = pv ? `${U} ${n} compared with ${U} ${n - 1}` : `${U} ${n}`;
+  $('chartHint').textContent = `Hover over or drag across the chart to try other clan plans. Each reading assumes all ${K} clans plan the same amount.`;
+  const leg = [`<span><span class="sw" style="background:var(--demand);border-color:var(--demand)"></span>${U} ${n} demand</span>`];
+  if (pv) leg.push(`<span><span class="sw" style="background:var(--old-eq);border-color:var(--old-eq)"></span>${U} ${n - 1} demand</span>`);
+  leg.push('<span><span class="sw" style="background:var(--supply);border-color:var(--supply)"></span>Average total cost (every player producing the same)</span>');
+  if (profitLabel) leg.push(`<span><span class="sw" style="background:var(--margin-fill);border-color:var(--sage)"></span>${U} ${n - 1} price − ATC</span>`);
+  if (hasLoss) leg.push(`<span><span class="sw" style="background:var(--loss-fill);border-color:var(--demand)"></span>${U} ${n} losses: price below ATC</span>`);
+  $('dmLegend').innerHTML = leg.join('');
+}
+
+/* ---------- market message ---------- */
+function renderMktCard() {
+  const msgs = S.game.market_messages, my = S.my, open = S.round.phase === 'vote';
+  const c = S.market_counts || {}, sent = MKT_KEYS.reduce((s, k) => s + (c[k] || 0), 0);
+  const box = $('mktOpts');
+  if (!box.children.length) box.innerHTML = MKT_KEYS.map(k => `<button type="button" class="opt" data-mkt="${k}">${esc(msgs[k])}</button>`).join('');
+  box.querySelectorAll('[data-mkt]').forEach(b => { b.classList.toggle('sel', b.dataset.mkt === my.market); b.disabled = !open; });
+  box.hidden = !open;
+  $('mktFeed').hidden = !open;
+  $('mktAside').innerHTML = !open ? 'Public · closed' : my.market ? '<span class="sent-tag">Sent ✓</span> Public' : '<span class="req-tag">Required</span> Public';
+  $('mktIntro').textContent = !open ? (my.market ? `Messages closed with the clan vote. You said “${msgs[my.market]}.”` : 'Messages closed with the clan vote.')
+    : 'Send one message to every player in the market. Others see only your clan’s name, never yours. You can change it until the clan vote closes.';
+  $('mktCard').classList.toggle('req', open && !my.market);
+  const top = sent ? MKT_KEYS.slice().sort((a, b) => (c[b] || 0) - (c[a] || 0))[0] : null;
+  $('mktLead').hidden = !top;
+  if (top) $('mktLead').innerHTML = `<span class="ml-k">Most players say</span><span class="ml-v">“${esc(msgs[top])}”</span><span class="ml-n">${c[top]} of ${sent} messages</span>`;
+  $('mktBars').innerHTML = MKT_KEYS.map(k => `<div class="mrow ${k === top ? 'top' : ''}"><span class="ml">${esc(msgs[k].replace(/^Everyone should /, ''))}</span><div class="bar-track"><div class="bar-fill ${k === top ? 'lead' : ''}" style="width:${sent ? (c[k] || 0) / sent * 100 : 0}%"></div></div><span class="tn">${c[k] || 0}</span></div>`).join('')
+    + `<div class="note">${sent} of ${S.players} players have sent a message.</div>`;
+  $('mktFeed').innerHTML = (S.feed || []).map(f => `<div class="fmsg ${f.mine ? 'me' : ''}"><b>${esc(f.clan)}</b>${f.mine ? ' <span class="note">(you)</span>' : ''}${f.changed ? ' <span class="note">· changed</span>' : ''}<div>“${esc(msgs[f.message])}”</div></div>`).join('');
+}
+
+/* ---------- clan chat ---------- */
+function renderClanChat() {
+  const me = S.me, name = esc(me.clan_name), required = me.chat_on && !me.muted && S.round.phase === 'vote';
+  $('clanCard').classList.toggle('req', required && !S.my.chat_sent);
+  $('clanAside').innerHTML = !me.chat_on ? `Off · ${name} only` : S.my.chat_sent ? `<span class="sent-tag">Sent ✓</span> ${name} only` : required ? `<span class="req-tag">Required</span> ${name} only` : `${name} only`;
+  $('clanMonitor').textContent = `${me.chat_on ? `Send at least one message to your clan this ${unit(true)}. ` : 'Clan chat is turned off, so no chat message is required right now. '}Private to ${me.clan_name}; your instructor can read all messages.`;
+  const input = $('chatText'), off = !me.chat_on || me.muted;
+  input.disabled = off; $('chatSend').disabled = off;
+  input.placeholder = me.muted ? 'Your instructor has muted you' : !me.chat_on ? 'Clan chat is off' : 'Or write your own';
+  const cc = S.game.clan_comments || {}, sigC = JSON.stringify(cc), qbox = $('quickComments');
+  if (qbox.dataset.sig !== sigC) {
+    qbox.dataset.sig = sigC;
+    qbox.innerHTML = [['plan', 'Our plan'], ['others', 'Other clans'], ['clan', 'Our clan']].map(([k, label]) => (cc[k] || []).length ? `<div><div class="quick-k">${label}</div><div class="quick-row">${cc[k].map(c => `<button type="button" class="qc">${esc(c)}</button>`).join('')}</div></div>` : '').join('');
+  }
+  qbox.querySelectorAll('.qc').forEach(b => { b.disabled = off; });
+  $('chatForm').hidden = !S.game.custom_chat_on;
+  const key = (S.chat || []).map(m => m.id + (m.hidden ? 'h' : '')).join(',');
+  if (key !== chatKey) {
+    chatKey = key;
+    const box = $('msgs'), atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    box.innerHTML = (S.chat || []).map(m => `<div class="msg ${m.me ? 'me' : ''} ${m.hidden ? 'removed' : ''}"><div class="who-line"><b>${esc(m.screen_name)}</b> · ${esc(m.team_brand)} · ${new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div><div class="bubble">${m.hidden ? 'Message removed by your instructor' : esc(m.body)}</div></div>`).join('') || '<div class="note">No messages yet.</div>';
+    if (atEnd) box.scrollTop = box.scrollHeight;
+  }
+}
+
+/* ---------- clan vote card ---------- */
+function renderVote(st) {
+  const g = S.game, me = S.me, my = S.my, r = S.round, pl = S.plan, n = r.number, U = unit(), clan = me.clan_name;
+  const planIn = Number(pl.plan_in), members = Math.max(1, S.clan_members);
+  $('voteTitle').textContent = `${clan}'s ${U} ${n} plan`;
+  $('voteAside').innerHTML = r.phase === 'vote' ? 'Clan vote closes in <b class="clock" data-clock="vote"></b>' : 'Clan vote closed';
+  $('planInLabel').textContent = S.prev_plan ? `Plan going in (${U} ${n - 1}'s plan)` : 'Starting plan (equal share per player)';
+  $('planInFigure').textContent = `${bil(planIn)} billion lb`;
+  $('planInShare').textContent = `${fmt(planIn / members)} lb for each of ${members} members`;
+  if (S.prev_plan && S.prev_market) {
+    const act = S.prev_clans.find(c => c.clan_id === me.clan_id), a = act ? Number(act.actual_q) : 0, p0 = Number(S.prev_plan.plan_total), over = p0 ? (a / p0 - 1) * 100 : 0;
+    $('planLast').hidden = false;
+    $('planLastBody').innerHTML = `<tr><td>${U} ${n - 1} vote</td><td class="num">${voteLabel(S.prev_plan.vote_result)} (${S.prev_plan.votes_for} of ${S.prev_plan.members})</td></tr>
+      <tr><td>${esc(clan)} actual output</td><td class="num">${bil(a)} billion lb</td></tr>
+      <tr><td>Over the plan by</td><td class="num over">${over >= 0 ? '+' : '−'}${Math.abs(over).toFixed(1)}%</td></tr>`;
+  } else $('planLast').hidden = true;
+
+  const open = r.phase === 'vote' && !me.muted;
+  $('voteOpen').hidden = !open;
+  const lateNote = !my.in_round && r.phase !== 'vote' && r.phase !== 'ran';
+  $('voteStateNote').hidden = !(me.muted && r.phase !== 'ran') && !lateNote;
+  $('voteStateNote').textContent = me.muted ? "Your instructor has muted you. You can't vote or earn points until you're unmuted." : `You joined after this vote closed. You'll start next ${unit(true)}.`;
+  $('voteDone').hidden = r.phase === 'vote' || me.muted || lateNote;
+  if (pl.closed) {
+    const txt = `${esc(clan)}'s vote closed: <b>${voteLabel(pl.vote_result)}</b>${pl.votes_cast ? ` (${pl.votes_for} of ${pl.votes_cast} votes)` : ' (no votes, so the plan stays the same)'}. The plan is <b>${bil(pl.plan_total)} billion lb</b>: <b>${fmt(Number(pl.plan_total) / Math.max(1, pl.members))} lb</b> per member.`;
+    $('planSetMarket').innerHTML = txt; $('planSet').innerHTML = txt;
+    $('toFirm').hidden = st !== 'firm' || r.phase !== 'firm';
+  }
+  if (!open) return;
+
+  const needChat = me.chat_on && !my.chat_sent, ready = my.market && !needChat, need = [];
+  if (!my.market) need.push('your <b>market message</b> (<button type="button" class="linkbtn" data-scroll="mktCard">go to it</button>)');
+  if (needChat) need.push('a <b>clan chat</b> message (<button type="button" class="linkbtn" data-scroll="clanCard">go to it</button>)');
+  $('voteGate').hidden = !!ready;
+  $('voteGate').innerHTML = `<b>No message, no points.</b> Send ${need.join(' and ')} first. Your clan vote opens once ${need.length > 1 ? 'both are' : 'it is'} sent.`;
+  $('voteQ').textContent = `How should ${clan} change its plan this ${unit(true)}?`;
+  const grid = $('voteGrid');
+  const sig = VOTE_KEYS.map(k => k + planIn + members).join();
+  if (grid.dataset.sig !== sig) {
+    grid.dataset.sig = sig;
+    grid.innerHTML = VOTE_KEYS.map(k => `<button type="button" class="vote" data-vote="${k}"><span class="vt">${voteLabel(k)}</span><span class="vq">${bil(planIn * voteMult(k))} billion lb</span><span class="vs">${fmt(planIn * voteMult(k) / members)} each</span></button>`).join('');
+  }
+  grid.querySelectorAll('.vote').forEach(b => { b.classList.toggle('sel', b.dataset.vote === my.vote); b.classList.toggle('locked', !ready); b.setAttribute('aria-disabled', String(!ready)); });
+  const t = S.tally || {}, voted = VOTE_KEYS.reduce((s, k) => s + (t[k] || 0), 0);
+  $('tally').innerHTML = VOTE_KEYS.map(k => `<div class="trow"><span class="tl">${voteLabel(k)}</span><div class="bar-track"><div class="bar-fill ${k === my.vote ? 'mine' : ''}" style="width:${(t[k] || 0) / members * 100}%"></div></div><span class="tn">${t[k] || 0}</span></div>`).join('')
+    + `<div class="note">${voted} of ${members} members have voted${my.vote ? ', including you' : ''}. ${Math.max(0, members - voted)} not yet.</div>`;
+  $('voteNote').innerHTML = `When the timer ends, the option with the most votes becomes the plan. <b>In a tie, the smallest change wins.</b> You can change your vote until then. Shares may change until the vote closes if a member joins. <b>No message, no points:</b> if you don't send your messages and vote, you can't make a firm decision; you're counted as Split and earn <b>0 points</b> this ${unit(true)}.`;
+}
+
+/* ---------- decide tab ---------- */
+function renderDecide(st) {
+  const g = S.game, me = S.me, my = S.my, r = S.round, pl = S.plan, n = r.number, U = unit();
+  const cur = st === 'vote' ? 1 : st === 'ran' ? 3 : 2;
+  [1, 2, 3].forEach(i => { const el = $('stp' + i); el.classList.toggle('on', i === cur); el.classList.toggle('done', i < cur); });
+  $('stp3Label').textContent = `${U} runs`;
+  $('dVote').hidden = st !== 'vote';
+  const firmOpen = r.phase === 'firm';
+  const hasChoice = !!my.decision;
+  const showForm = st === 'firm' && firmOpen && (!hasChoice || changing);
+  const showDone = st === 'firm' && hasChoice && !showForm;
+  $('teamCard').hidden = st !== 'firm';
+  $('dFirm').hidden = !showForm;
+  $('dDone').hidden = !showDone;
+  const notices = {
+    muted: ['You\'re muted', `<div class="status-miss">Your instructor has muted you. You can't vote or earn points until you're unmuted. You're counted as <b>Split</b>, and your output and profit still count for ${esc(me.team_name || me.team_brand)}. If you're unmuted before the vote closes, you can send your messages and vote.</div>`],
+    late: [`You'll start next ${unit(true)}`, `<div class="status-ok">You joined after ${esc(me.clan_name)}'s ${U} ${n} vote closed, so you sit out this ${unit(true)}. You have no output, profit or points for ${U} ${n}, and your team's average isn't affected.</div>`],
+    missed: [`You missed the ${U} ${n} vote`, `<div class="status-miss">You didn't vote before ${esc(me.clan_name)}'s vote closed, so you can't make a firm decision this ${unit(true)}. You're counted as <b>Split</b> (${fmt(Number(my.share || 0))} lb), and your output and profit count for ${esc(me.team_name || me.team_brand)}, but <b>you earn 0 points</b> for ${U} ${n}.</div>`],
+    ran: [g.ended ? 'The game is over' : `${U} ${n} has run`, `<div class="status-ok">${g.ended ? 'See the Results tab for your final points. Your score email will arrive after your instructor sends final scores.' : `See the Results tab. ${U} ${n + 1} starts when your instructor is ready.`}</div>`]
+  };
+  const nt = notices[st];
+  if (st === 'firm' && !firmOpen && !hasChoice) {
+    $('dNotice').hidden = false; $('dNoticeTitle').textContent = "Time's up";
+    $('dNoticeText').innerHTML = `<div class="status-miss">You didn't make a firm decision before the timer ended, so you're counted as <b>Split</b> and earn <b>0 points</b> this ${unit(true)}. If your instructor adds time, you can still choose.</div>`;
+  } else {
+    $('dNotice').hidden = !nt;
+    if (nt) { $('dNoticeTitle').textContent = nt[0]; $('dNoticeText').innerHTML = nt[1]; }
+  }
+  if (st === 'vote') {
+    $('dVoteText').innerHTML = `The clan vote is on the <b>Market</b> tab, next to the news and the demand chart. Send your messages, then vote on ${esc(me.clan_name)}'s plan.`;
+    const todo = (ok, t) => `<div class="todo ${ok ? 'ok' : ''}"><span>${ok ? '✓' : '○'}</span>${t}</div>`;
+    $('decideVoteStatus').innerHTML = todo(my.market, 'Market message sent') + (me.chat_on ? todo(my.chat_sent, 'Clan chat message sent') : '') + todo(my.vote, my.vote ? `You voted <b>${voteLabel(my.vote)}</b>` : 'Clan vote');
+  }
+  if (st !== 'firm') { changing = false; picked = null; return; }
+
+  // Team chat
+  const others = Math.max(0, S.team_size - 1);
+  $('teamCard').classList.toggle('req', !my.team_message && firmOpen);
+  $('teamAside').innerHTML = my.team_message ? '<span class="sent-tag">Sent ✓</span> Team only' : '<span class="req-tag">Required</span> Team only';
+  $('teamIntro').textContent = `Step 2a: tell your ${others} ${others === 1 ? 'teammate' : 'teammates'} on ${me.team_name || me.team_brand} what you think the team should do. Only your team (and your instructor) sees these.`;
+  document.querySelectorAll('[data-team]').forEach(b => { b.classList.toggle('sel', b.dataset.team === my.team_message); b.disabled = !firmOpen; });
+  const tm = S.team_messages || [], cnt = { split: 0, steal: 0 }; tm.forEach(m => { cnt[m.message]++; });
+  $('teamFeed').innerHTML = tm.map(m => `<div class="fmsg ${m.me ? 'me' : ''} ${m.message}"><b>${esc(m.screen_name)}</b><div>“${TEAM_TEXT[m.message]}”</div></div>`).join('')
+    + `<div class="note">${cnt.split} say split, ${cnt.steal} say steal.</div>`;
+
+  // Firm decision
+  const share = Number(my.share || 0), steal = share * (1 + Number(g.steal_pct) / 100);
+  $('firmAside').innerHTML = 'Closes in <b class="clock" data-clock="firm"></b>';
+  $('splitQ').textContent = fmt(share) + ' lb';
+  $('stealQ').textContent = fmt(steal) + ' lb';
+  $('stealNote').textContent = `Your share + ${pts(g.steal_pct)}%`;
+  $('firmNote').innerHTML = `Your choice is private: only ${esc(me.clan_name)}'s total is published after the ${unit(true)}. You can change it until the timer ends. If you don't choose, you're counted as Split but earn 0 points.`;
+  $('teamGate').hidden = !!my.team_message;
+  const sel = picked || (my.decision && my.decision.choice);
+  document.querySelectorAll('.ss').forEach(b => { b.classList.toggle('sel', b.dataset.ss === sel); b.classList.toggle('locked', !my.team_message); b.setAttribute('aria-disabled', String(!my.team_message)); });
+  $('ssConfirm').disabled = !picked || !my.team_message;
+  $('ssMsg').textContent = picked ? (picked === 'steal' ? `Steal: you produce ${fmt(steal)} lb.` : `Split: you produce ${fmt(share)} lb.`) : '';
+  if (hasChoice) {
+    const ch = my.decision.choice;
+    $('doneTitle').textContent = `You're in for ${U} ${n}`;
+    $('doneText').innerHTML = `You chose <b>${ch === 'steal' ? `Steal: ${fmt(steal)} lb` : `Split: ${fmt(share)} lb`}</b> at ${new Date(my.decision.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}. ${firmOpen ? 'You can change your choice until the timer ends.' : 'The firm decision has closed.'}`;
+    $('changeChoice').hidden = !firmOpen;
+  }
+}
+
+/* ---------- results tab ---------- */
+function renderResults() {
+  const rounds = R ? R.rounds : [], empty = !rounds.length;
+  $('resEmpty').hidden = !empty; $('resBody').hidden = empty;
+  if (empty) return;
+  const U = unit(), g = S.game;
+  const d = rounds.find(x => x.round === viewRound) || rounds[rounds.length - 1], m = d.mine, tm = d.my_team;
+  $('resSeasons').innerHTML = rounds.map(x => `<button class="season-btn ${x.round === d.round ? 'active' : ''}" data-s="${x.round}" type="button">${U} ${x.round}</button>`).join('')
+    + (g.rounds > rounds.length && !g.ended ? `<button class="season-btn locked" type="button" disabled>${U} ${rounds.length + 1}</button>` : '');
+  $('resName').textContent = `${U} ${d.round}${d.name ? ': ' + d.name : ''}`;
+  $('resMineTitle').textContent = `Your ${unit(true)}`;
+  $('resBenchHead').textContent = `${U} result`;
+  const P = Number(d.price), A = Number(d.avg_atc), diff = P - A;
+  $('resStats').innerHTML = `<div class="stat"><div class="k">Market price</div><div class="v">${price(P)}</div><div class="s">per lb</div></div>`
+    + (m ? `<div class="stat"><div class="k">Your choice</div><div class="v">${m.choice === 'steal' ? 'Steal' : 'Split'}</div><div class="s">${m.choice ? '' : 'counted as Split · '}${fmt(m.output)} lb</div></div>` : `<div class="stat"><div class="k">Your choice</div><div class="v">—</div><div class="s">You joined after this ${unit(true)}'s vote</div></div>`)
+    + (tm ? `<div class="stat"><div class="k">Your team's rank</div><div class="v">${pts(tm.rank)} of ${tm.n_teams}</div><div class="s">${esc(S.me.team_name || S.me.team_brand)}</div></div>` : '')
+    + `<div class="stat"><div class="k">Your points</div><div class="v points">${m ? pts(m.points) : '0'}</div><div class="s">${m && !m.took_part ? "You didn't take part" : `Game total so far: ${pts(R.total_points)}`}</div></div>`;
+  $('resBench').innerHTML = `<tr><td>Market price</td><td class="num">${price(P)}</td></tr>
+    <tr><td>ATC of the average player</td><td class="num">${price(A)}</td></tr>
+    <tr class="mine"><td>Price − ATC (profit per lb)</td><td class="num">${diff < 0 ? '−' : ''}${price(Math.abs(diff))}</td></tr>
+    <tr><td>Total market output (billion lb)</td><td class="num">${bil(d.total_q)}</td></tr>`;
+  const v = d.my_vote;
+  $('resMine').innerHTML = m ? `<tr><td>${esc(S.me.clan_name)}'s vote</td><td class="num">${v && v.vote_result ? voteLabel(v.vote_result) + (v.votes_cast ? ` (${v.votes_for} of ${v.votes_cast} votes)` : ' (no votes)') : '—'}</td></tr>
+    <tr><td>Your share of the plan (lb)</td><td class="num">${fmt(m.share)}</td></tr>
+    <tr><td>Your choice</td><td class="num"><b>${m.choice === 'steal' ? 'Steal' : m.choice === 'split' ? 'Split' : 'Counted as Split'}</b></td></tr>
+    <tr><td>Your output (lb)</td><td class="num">${fmt(m.output)}</td></tr>
+    <tr><td>Your ATC</td><td class="num">${price(m.atc)}</td></tr>
+    <tr><td>Your profit</td><td class="num ${Number(m.profit) < 0 ? 'neg' : ''}">${money(Number(m.profit))}</td></tr>`
+    : `<tr><td colspan="2">You joined after this ${unit(true)}'s vote closed, so you weren't in the market.</td></tr>`;
+  $('resClans').innerHTML = (d.clans || []).map(c => `<tr class="${c.mine ? 'mine' : ''}"><td>${esc(c.name)}</td><td class="num">${c.plan != null ? bil(c.plan) : '—'}</td><td class="num">${bil(c.actual_q)}</td></tr>`).join('');
+  const k = g.points_mode === 'scale' ? Number(g.total_points) / (g.rounds * (Number(g.pts_base) + Number(g.pts_rank))) : 1;
+  $('resPointsRule').textContent = `Points: ${pts(Number(g.pts_base) * k)} base + up to ${pts(Number(g.pts_rank) * k)} for rank − up to ${pts(Number(g.pts_loss) * k)} for a loss`;
+  $('resLeader').innerHTML = (d.teams || []).map(t => `<tr class="${t.mine ? 'mine' : ''}"><td>${pts(t.rank)}</td><td>${esc(t.name || t.brand)} <span class="note">${esc(t.name ? t.brand : '')}</span></td><td>${esc(t.clan)}</td><td class="num ${Number(t.avg_profit) < 0 ? 'neg' : ''}">${money(Number(t.avg_profit))}</td><td class="num points">${pts(t.points)}</td></tr>`).join('');
+  $('resEndNote').textContent = 'Your final scores will be emailed after the game.';
+  $('lengthNote').hidden = !g.length_changed;
+  $('lengthNote').textContent = g.points_mode === 'scale' ? `The game length changed, so all ${unit(true)}s were re-scored to keep the total at ${pts(g.total_points)} points.` : '';
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click', e => {
+  const tab = e.target.closest('.tab-btn'); if (tab) { setTab(tab.dataset.tab); if (tab.dataset.tab === 'results') renderResults(); return; }
+  const go = e.target.closest('[data-goto]'); if (go) { setTab(go.dataset.goto); window.scrollTo(0, 0); return; }
+  const sc = e.target.closest('[data-scroll]'); if (sc) { const el = $(sc.dataset.scroll); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); flash(sc.dataset.scroll); return; }
+  const qc = e.target.closest('.qc'); if (qc && !qc.disabled) { act('coc_send_clan_chat', { p_body: qc.textContent }); return; }
+  const mk = e.target.closest('[data-mkt]'); if (mk && !mk.disabled) { act('coc_send_market_message', { p_message: mk.dataset.mkt }); return; }
+  const v = e.target.closest('[data-vote]');
+  if (v) {
+    if (v.classList.contains('locked')) { flash('voteGate'); if (!S.my.market) flash('mktCard'); if (S.me.chat_on && !S.my.chat_sent) flash('clanCard'); return; }
+    act('coc_cast_vote', { p_vote: v.dataset.vote }); return;
+  }
+  const tm = e.target.closest('[data-team]'); if (tm && !tm.disabled) { act('coc_send_team_message', { p_message: tm.dataset.team }); return; }
+  const ss = e.target.closest('[data-ss]');
+  if (ss) {
+    if (ss.classList.contains('locked')) { flash('teamGate'); flash('teamCard'); return; }
+    picked = ss.dataset.ss; render(); return;
+  }
+  const rs = e.target.closest('#resSeasons .season-btn[data-s]'); if (rs) { viewRound = Number(rs.dataset.s); renderResults(); return; }
+});
+function flash(id) { const el = $(id); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+$('ssConfirm').addEventListener('click', async () => {
+  if (!picked) return;
+  const ok = await act('coc_decide', { p_choice: picked });
+  if (ok) { picked = null; changing = false; render(); }
+});
+$('changeChoice').addEventListener('click', () => { changing = true; picked = null; render(); });
+$('chatForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const t = $('chatText'), body = t.value.trim();
+  if (!body) return;
+  const ok = await act('coc_send_clan_chat', { p_body: body });
+  if (ok) t.value = '';
+});
+
+/* ---------- sign-in: same email-only flow as Burgerville ---------- */
+const WCU_EMAIL_REGEX = /^[^\s@]+@wcupa\.edu$/i;
+$('signInForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const email = $('loginEmail').value.trim(), st = $('loginStatus');
+  if (!email) { st.textContent = 'Enter your email first.'; return; }
+  if (!WCU_EMAIL_REGEX.test(email)) { st.textContent = 'Please use your WCU email address (ends in @wcupa.edu).'; return; }
+  st.textContent = 'Checking...';
+  let res;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/passwordless-login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }, body: JSON.stringify({ email })
+    });
+    res = await r.json();
+    if (!r.ok) throw new Error(res.error || 'Login request failed');
+  } catch (err) { st.textContent = 'We could not complete sign-in just now. Please try again in a moment; if it keeps happening, contact your professor.'; return; }
+  if (res.fallback || !res.hashedToken) { st.textContent = 'That email was not found. Please try the email your professor has on file, or contact your professor.'; return; }
+  st.textContent = 'Signing in...';
+  const { error } = await sb.auth.verifyOtp({ token_hash: res.hashedToken, type: 'magiclink' });
+  if (error) st.textContent = 'Error: ' + error.message;
+});
+async function signOut() { stopPolling(); await sb.auth.signOut(); }
+$('signOutBtn').addEventListener('click', signOut);
+$('noticeSignOut').addEventListener('click', signOut);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && gameId) refresh().catch(() => {}); });
+
+let entered = false;
+sb.auth.onAuthStateChange((_ev, session) => {
+  // Deferred: calling the database inside this callback can deadlock the auth client.
+  setTimeout(() => {
+    if (session && !entered) { entered = true; enter(); }
+    else if (!session) { entered = false; stopPolling(); $('loginStatus').textContent = ''; show('signin'); }
+  }, 0);
+});
+setInterval(tick, 250);
+
+</script>
+</body>
+</html>
